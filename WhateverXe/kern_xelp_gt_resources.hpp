@@ -62,7 +62,8 @@ inline bool decodeTGLGT2(const uint32_t *fuses, GTResources &out) {
     out={};
     if(!decodeADLPGT(fuses,decoded))return false;
     if(!((decoded.dss==3 && decoded.eus==48 && decoded.l3Banks==6) ||
-         ((decoded.dss==5 || decoded.dss==6) && decoded.eus==16*decoded.dss && decoded.l3Banks==8)))return false;
+         ((decoded.dss==5 || decoded.dss==6) && decoded.eus==16*decoded.dss &&
+          (decoded.l3Banks==8 || decoded.l3Banks==6))))return false;
     out=decoded;
     return true;
 }

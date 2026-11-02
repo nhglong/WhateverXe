@@ -61,19 +61,28 @@ int main() {
  }
  for(auto id:{0x9a40U,0x9a49U,0x9a78U,0x9a59U,0x9ac0U,0x9ac9U,0x9ad9U,0x9af8U})
  for(auto rev:{0U,1U,2U,3U,4U,255U})for(auto video:{0xe00feU,0xe00faU}) {
-  check(id,rev,7,0xc0,video); // 48 EU, three DSS, six banks
-  check(id,rev,0x3e,0,video); // 80 EU, five DSS, eight banks
-  check(id,rev,0x3f,0,video); // 96 EU, six DSS, eight banks
+  check(id,rev,7,0xc0,video);    // 48 EU, 3 DSS, 6 banks
+  check(id,rev,0x3e,0,video);    // 80 EU, 5 DSS, 8 banks
+  check(id,rev,0x3e,0xc0,video); // 80 EU, 5 DSS, 6 banks
+  check(id,rev,0x3f,0,video);    // 96 EU, 6 DSS, 8 banks
+  check(id,rev,0x3f,0xc0,video); // 96 EU, 6 DSS, 6 banks
  }
  XELP::GTResources resource;
  assert(!XELP::decodeTGLGT2(nullptr,resource));
  for(unsigned slice=0;slice<4;++slice)for(unsigned dss=0;dss<64;++dss)
  for(unsigned eu:{0U,0xc0U,0xf0U,0xffU})for(unsigned banks:{0U,0xc0U,0xf0U,0xffU}) {
-  uint32_t f[]={slice,dss,eu,banks,0xe00fa};unsigned count=__builtin_popcount(dss);
-  bool expected=slice==1 && eu==0 && ((count==3 && banks==0xc0) || ((count==5 || count==6) && banks==0));
+  uint32_t f[]={slice,dss,eu,banks,0xe00fa};
+  unsigned count=__builtin_popcount(dss);
+  bool expected=slice==1 && eu==0 &&
+   ((count==3 && banks==0xc0) ||
+    ((count==5 || count==6) && (banks==0 || banks==0xc0)));
   assert(XELP::decodeTGLGT2(f,resource)==expected);
  }
- for(unsigned i=0;i<5;++i){uint32_t f[]={1,63,0,0,0xe00fa};f[i]=~0U;assert(!XELP::decodeTGLGT2(f,resource));}
+ for(unsigned i=0;i<5;++i) {
+  uint32_t f[]={1,63,0,0,0xe00fa};
+  f[i]=~0U;
+  assert(!XELP::decodeTGLGT2(f,resource));
+ }
  puts("PASS all eight TGL GT2 IDs, fuse-derived URB native stores, unsupported topology rejection");
 }'''.replace('BODY',body).replace('QUALIFICATION',qualification)
 with tempfile.TemporaryDirectory(prefix='small-gt-urb-') as tmp:
