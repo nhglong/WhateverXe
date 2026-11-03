@@ -74,6 +74,14 @@ template<class IO> bool valid(IO &io, uint32_t reg, uint32_t &value) {
     return value != UINT32_MAX;
 }
 
+// Preflight all shared registers before changing requests or references.
+template<class IO> bool registersAvailable(IO &io) {
+    uint32_t value;
+    const uint32_t registers[] {Driver,DDI,AUX,Fuses};
+    for(auto reg:registers)if(!valid(io,reg,value))return false;
+    return true;
+}
+
 // Read-only proof for a caller already holding leases. The same owner lock
 // must cover this snapshot and the subsequent register operation. Hardware
 // left on by firmware is not a logical reference; no acquisition or polling
@@ -157,6 +165,18 @@ template<class IO> Status waitTCAuxHealth(IO &io,unsigned d) {
     }
 }
 
+// Acquisition and restoration prove the same request/ACK/health/fuse sequence.
+template<class IO> Status waitRequested(IO &io,unsigned d) {
+    uint32_t value;
+    if(!valid(io,control(d),value))return Status::Unavailable;
+    if(!(value&request(d)))return Status::RequestLost;
+    // WA_14017248603 uses the ADL-P/N TC AUX 500ms enable budget.
+    auto status=wait(io,control(d),enabled(d),tcAux(d)?500000:1000);
+    if(status==Status::Complete && tcAux(d))status=waitTCAuxHealth(io,d);
+    if(status==Status::Complete && d<5)status=wait(io,Fuses,fuse(d),FuseTimeoutUs);
+    return status;
+}
+
 // Isolation is opt-in for a caller that can propagate a failed acquisition.
 // Native void getPower wrappers must retain controller-wide failure behavior.
 template<class IO> Result acquire(IO &io, State &s, Lease &lease, uint32_t domains,bool isolateTC=false) {
@@ -169,9 +189,7 @@ template<class IO> Result acquire(IO &io, State &s, Lease &lease, uint32_t domai
     }
     uint32_t value;
     // Preflight the entire transaction before its first write/reference.
-    const uint32_t registers[] {Driver, DDI, AUX, Fuses};
-    for (auto reg : registers)
-        if (!valid(io, reg, value)) { r.status = Status::Unavailable; return r; }
+    if(!registersAvailable(io)) {r.status=Status::Unavailable;return r;}
     for (unsigned d = 0; d < Count; ++d)
         if ((domains & (1U << d)) && s.refs[d] == UINT32_MAX) {
             r.status = Status::Overflow; r.domain = d; return r;
@@ -196,18 +214,8 @@ template<class IO> Result acquire(IO &io, State &s, Lease &lease, uint32_t domai
             io.write(control(d), value | request(d)); ++r.writes;
             s.owned |= mask; added |= mask;
         } else if (!(s.owned & mask)) s.borrowed |= mask;
-        if (!valid(io, control(d), value)) { r.status = Status::Unavailable; break; }
-        if (!(value & request(d))) { r.status = Status::RequestLost; break; }
-        // WA_14017248603 uses the ADL-P/N TC AUX 500ms enable budget.
-        r.status = wait(io, control(d), enabled(d), tcAux(d)?500000:1000);
-        if (r.status != Status::Complete) break;
-        if(tcAux(d)) {
-            r.status=waitTCAuxHealth(io,d);if(r.status!=Status::Complete)break;
-        }
-        if (d < 5) {
-            r.status = wait(io, Fuses, fuse(d), FuseTimeoutUs);
-            if (r.status != Status::Complete) break;
-        }
+        r.status=waitRequested(io,d);
+        if(r.status!=Status::Complete)break;
     }
     if (r.status == Status::Complete) {
         for (unsigned d = 0; d < Count; ++d) if (domains & (1U << d)) ++s.refs[d];
@@ -267,10 +275,7 @@ template<class IO> Result suspend(IO &io,State &s) {
     if(!s.ready || s.faulted)return r;
     if(s.suspended) {r.status=Status::Complete;return r;}
     uint32_t value;
-    const uint32_t registers[] {Driver,DDI,AUX,Fuses};
-    for(auto reg : registers)if(!valid(io,reg,value)) {
-        r.status=Status::Unavailable;return r;
-    }
+    if(!registersAvailable(io)) {r.status=Status::Unavailable;return r;}
     for(unsigned d=0;d<Count;++d)if(s.owned&(1U<<d)) {
         if(!valid(io,control(d),value) || !(value&request(d))) {
             r.status=Status::RequestLost;r.domain=d;s.faulted=true;return r;
@@ -290,10 +295,7 @@ template<class IO> Result restore(IO &io,State &s) {
     Result r;
     if(!s.ready || s.faulted)return r;
     uint32_t value;
-    const uint32_t registers[] {Driver,DDI,AUX,Fuses};
-    for(auto reg : registers)if(!valid(io,reg,value)) {
-        r.status=Status::Unavailable;return r;
-    }
+    if(!registersAvailable(io)) {r.status=Status::Unavailable;return r;}
     for(unsigned d=0;d<Count;++d)if(s.refs[d] && tcAux(d) && !tcAuxSupported(io,0)) {
         r.status=Status::UnqualifiedTCAUX;r.domain=d;return r;
     }
@@ -308,12 +310,7 @@ template<class IO> Result restore(IO &io,State &s) {
             if(!s.suspended) {r.status=Status::RequestLost;break;}
             io.write(control(d),value|request(d));++r.writes;s.owned|=1U<<d;
         }
-        if(!valid(io,control(d),value)) {r.status=Status::Unavailable;break;}
-        if(!(value&request(d))) {r.status=Status::RequestLost;break;}
-        r.status=wait(io,control(d),enabled(d),tcAux(d)?500000:1000);
-        if(r.status==Status::Complete && tcAux(d))r.status=waitTCAuxHealth(io,d);
-        if(r.status!=Status::Complete)break;
-        if(d<5)r.status=wait(io,Fuses,fuse(d),FuseTimeoutUs);
+        r.status=waitRequested(io,d);
         if(r.status!=Status::Complete)break;
     }
     if(r.status==Status::Complete) {s.suspended=false;r.domain=Count;}
