@@ -154,6 +154,27 @@ template<class IO> bool mailbox(IO &io,Change &r,uint32_t data,unsigned budgetUs
     if(r.mailboxStatus&0xFF) {r.status=ChangeStatus::MailboxError;return false;}
     return true;
 }
+// Shared PCODE preparation and concurrent-change proof for set/stop.
+template<class IO> bool prepare(IO &io,Change &r) {
+    const uint32_t registers[] {Mailbox,Data,Data1,PLL,Control};
+    for(auto reg:registers) {uint32_t v;if(!value(io,reg,v)) {r.status=ChangeStatus::Unavailable;return false;}}
+    // Linux uses a 3ms base plus a 50ms bounded retry. Include mailbox waits
+    // in this budget; never disable preemption for a long firmware poll here.
+    const auto start=r.delayUs;
+    for(;;) {
+        const auto remaining=53000-(r.delayUs-start);
+        if(!mailbox(io,r,3,remaining))return false;
+        if(r.mailboxReply&1)break;
+        if(r.delayUs-start>=53000) {r.status=ChangeStatus::PrepareTimeout;return false;}
+        delay(io,r,10);
+    }
+    const auto prepared=read(io);
+    if(prepared.status!=r.before.status || prepared.dssm!=r.before.dssm || prepared.pll!=r.before.pll ||
+       prepared.control!=r.before.control || prepared.squash!=r.before.squash) {
+        r.after=prepared;r.status=ChangeStatus::ReadbackMismatch;return false;
+    }
+    return true;
+}
 template<class IO> Change set(IO &io,uint64_t nativeHz,Conditions conditions) {
     Change r;r.requestedHz=nativeHz;r.before=read(io);
     if(r.before.status!=Status::Complete && r.before.status!=Status::Disabled)return r;
@@ -170,23 +191,7 @@ template<class IO> Change set(IO &io,uint64_t nativeHz,Conditions conditions) {
     if(conditions.activePipes && (r.before.status!=Status::Complete || r.before.divider!=divisor)) {
         r.status=ChangeStatus::ActiveDividerChange;return r;
     }
-    const uint32_t registers[] {Mailbox,Data,Data1,PLL,Control};
-    for(auto reg:registers) {uint32_t v;if(!value(io,reg,v)) {r.status=ChangeStatus::Unavailable;return r;}}
-    // Linux uses a 3ms base plus a 50ms bounded retry. Include mailbox waits
-    // in this budget; never disable preemption for a long firmware poll here.
-    const auto start=r.delayUs;
-    for(;;) {
-        const auto remaining=53000-(r.delayUs-start);
-        if(!mailbox(io,r,3,remaining))return r;
-        if(r.mailboxReply&1)break;
-        if(r.delayUs-start>=53000) {r.status=ChangeStatus::PrepareTimeout;return r;}
-        delay(io,r,10);
-    }
-    const auto prepared=read(io);
-    if(prepared.status!=r.before.status || prepared.dssm!=r.before.dssm || prepared.pll!=r.before.pll ||
-       prepared.control!=r.before.control || prepared.squash!=r.before.squash) {
-        r.after=prepared;r.status=ChangeStatus::ReadbackMismatch;return r;
-    }
+    if(!prepare(io,r))return r;
     if(r.before.status==Status::Complete) {
         if(r.before.ratio!=ratio) {
             write(io,r,PLL,0x80000000|ratio);
@@ -231,21 +236,7 @@ template<class IO> Change stop(IO &io,Conditions conditions) {
     if(r.before.status==Status::Disabled && !(r.before.pll&(1U<<30))) {
         r.after=r.before;r.status=ChangeStatus::Complete;return r;
     }
-    const uint32_t registers[] {Mailbox,Data,Data1,PLL,Control};
-    for(auto reg:registers) {uint32_t v;if(!value(io,reg,v)) {r.status=ChangeStatus::Unavailable;return r;}}
-    const auto start=r.delayUs;
-    for(;;) {
-        const auto remaining=53000-(r.delayUs-start);
-        if(!mailbox(io,r,3,remaining))return r;
-        if(r.mailboxReply&1)break;
-        if(r.delayUs-start>=53000) {r.status=ChangeStatus::PrepareTimeout;return r;}
-        delay(io,r,10);
-    }
-    const auto prepared=read(io);
-    if(prepared.status!=r.before.status || prepared.dssm!=r.before.dssm || prepared.pll!=r.before.pll ||
-       prepared.control!=r.before.control || prepared.squash!=r.before.squash) {
-        r.after=prepared;r.status=ChangeStatus::ReadbackMismatch;return r;
-    }
+    if(!prepare(io,r))return r;
     write(io,r,PLL,r.before.pll&~(1U<<31));
     if(!wait(io,r,PLL,1U<<30,0,1000)) {
         if(r.status!=ChangeStatus::Unavailable)r.status=ChangeStatus::PllTimeout;
