@@ -30,6 +30,9 @@ struct Readout {
 };
 static_assert(sizeof(Readout)==12*4,"Display13 CDCLK readout layout");
 
+// CDCLK_FREQ_DECIMAL is rounded 2*MHz minus two, including bypass mode.
+inline uint32_t decimal(uint32_t cdclkKHz) {return (2*cdclkKHz+500)/1000-2;}
+
 inline Readout decode(uint32_t dssm,uint32_t pll,uint32_t control,uint32_t squash) {
     Readout r; r.dssm=dssm;r.pll=pll;r.control=control;r.squash=squash;
     if(dssm==UINT32_MAX || pll==UINT32_MAX || control==UINT32_MAX || squash==UINT32_MAX) {
@@ -57,8 +60,7 @@ inline Readout decode(uint32_t dssm,uint32_t pll,uint32_t control,uint32_t squas
     if(!found) {r.status=Status::UnsupportedFrequency;return r;}
     // CDCLK_FREQ_DECIMAL is rounded 2*MHz minus two, independent of the
     // donor's Hz ABI. Validate it against PLL/divider, not the other way round.
-    const auto decimal=(2*r.cdclkKHz+500)/1000-2;
-    if((control&0x7FF)!=decimal) {r.status=Status::DecimalMismatch;return r;}
+    if((control&0x7FF)!=decimal(r.cdclkKHz)) {r.status=Status::DecimalMismatch;return r;}
     r.status=Status::Complete;return r;
 }
 
@@ -97,7 +99,7 @@ struct Conditions {
 inline bool plan(uint32_t reference,uint64_t nativeHz,uint32_t &ratio,uint32_t &divisor,uint32_t &control) {
     for(const auto &e:table) if(e.ref==reference && uint64_t(e.frequency)*2000==nativeHz) {
         ratio=e.ratio;divisor=e.ref*e.ratio/e.frequency;
-        control=(divisor==3 ? 1U<<22:0U)|0x380000|((2*e.frequency+500)/1000-2);
+        control=(divisor==3 ? 1U<<22:0U)|0x380000|decimal(e.frequency);
         return true;
     }
     return false;
@@ -133,6 +135,12 @@ template<class IO> bool wait(IO &io,Change &r,uint32_t reg,uint32_t mask,uint32_
         if(elapsed>=timeoutUs)return false;
         delay(io,r,10);
     }
+}
+// Every PLL transition keeps unavailable MMIO distinct from a lock timeout.
+template<class IO> bool waitPLL(IO &io,Change &r,uint32_t mask,uint32_t expected) {
+    if(wait(io,r,PLL,mask,expected,1000))return true;
+    if(r.status!=ChangeStatus::Unavailable)r.status=ChangeStatus::PllTimeout;
+    return false;
 }
 template<class IO> bool mailbox(IO &io,Change &r,uint32_t data,unsigned budgetUs=1000) {
     const auto start=r.delayUs;
@@ -196,22 +204,14 @@ template<class IO> Change set(IO &io,uint64_t nativeHz,Conditions conditions) {
         if(r.before.ratio!=ratio) {
             write(io,r,PLL,0x80000000|ratio);
             write(io,r,PLL,0x80800000|ratio);
-            if(!wait(io,r,PLL,0x40400000,0x40400000,1000)) {
-                if(r.status!=ChangeStatus::Unavailable)r.status=ChangeStatus::PllTimeout;
-                return r; // Keep request/maximum voltage after uncertain change.
-            }
+            // Keep request/maximum voltage after an uncertain change.
+            if(!waitPLL(io,r,0x40400000,0x40400000))return r;
             write(io,r,PLL,0x80000000|ratio);
-            if(!wait(io,r,PLL,0xC0C00000,0xC0000000,1000)) {
-                if(r.status!=ChangeStatus::Unavailable)r.status=ChangeStatus::PllTimeout;
-                return r;
-            }
+            if(!waitPLL(io,r,0xC0C00000,0xC0000000))return r;
         }
     } else {
         write(io,r,PLL,ratio);write(io,r,PLL,0x80000000|ratio);
-        if(!wait(io,r,PLL,1U<<30,1U<<30,1000)) {
-            if(r.status!=ChangeStatus::Unavailable)r.status=ChangeStatus::PllTimeout;
-            return r;
-        }
+        if(!waitPLL(io,r,1U<<30,1U<<30))return r;
     }
     write(io,r,Control,control);
     // Read back before lowering the prepare voltage. Failed PLL/decimal
@@ -238,21 +238,19 @@ template<class IO> Change stop(IO &io,Conditions conditions) {
     }
     if(!prepare(io,r))return r;
     write(io,r,PLL,r.before.pll&~(1U<<31));
-    if(!wait(io,r,PLL,1U<<30,0,1000)) {
-        if(r.status!=ChangeStatus::Unavailable)r.status=ChangeStatus::PllTimeout;
-        return r;
-    }
+    if(!waitPLL(io,r,1U<<30,0))return r;
     const auto bypass=r.before.refKHz/2;
-    write(io,r,Control,0x380000|((2*bypass+500)/1000-2));
+    const auto control=0x380000|decimal(bypass);
+    write(io,r,Control,control);
     r.after=read(io);
     if(r.after.status!=Status::Disabled || (r.after.pll&0xC0000000) ||
-       r.after.control!=(0x380000|((2*bypass+500)/1000-2)) || r.after.dssm!=r.before.dssm) {
+       r.after.control!=control || r.after.dssm!=r.before.dssm) {
         r.status=ChangeStatus::ReadbackMismatch;return r;
     }
     if(!mailbox(io,r,voltage(bypass)))return r;
     r.after=read(io);
     r.status=r.after.status==Status::Disabled && !(r.after.pll&0xC0000000) &&
-        r.after.control==(0x380000|((2*bypass+500)/1000-2)) && r.after.dssm==r.before.dssm ?
+        r.after.control==control && r.after.dssm==r.before.dssm ?
         ChangeStatus::Complete:ChangeStatus::ReadbackMismatch;
     return r;
 }
