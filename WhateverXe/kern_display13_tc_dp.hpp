@@ -17,7 +17,7 @@ struct DPClock : TMDSClock {
             const auto integer=8100000/(ref*2),rem=8100000%(ref*2);
             const auto fraction=uint32_t((uint64_t(rem)<<22)/(ref*2));
             const auto target=uint32_t((2000000000ULL/(132*ref)+5)/10);
-            const auto ratio=h==7?3:h==5?2:h==3?1:0;
+            const uint32_t ratio=h==7?3U:h==5?2U:h==3?1U:0U;
             p.rate=clock;p.reference=ref;p.dco=8100000;p.hs=h;p.ds=d;
             p.words[0]={0x212c,0x700,0x100};
             p.words[1]={0x20d8,0xff00,(d>=2?10U:5U)<<8};

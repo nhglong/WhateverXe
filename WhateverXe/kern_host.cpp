@@ -44,7 +44,7 @@ void XeHost::processKernel(KernelPatcher &patcher) {
    static_cast<uint32_t>(profile.family),static_cast<uint32_t>(profile.display),
    static_cast<uint32_t>(profile.gt),active};
   gpu->setProperty("WhateverXeDeviceSelection",selection,sizeof(selection));
-  if(!gpu->getProperty("model"))if(const auto name=XELP::model(profile))gpu->setProperty("model",const_cast<char *>(name),strlen(name)+1);
+  if(!gpu->getProperty("model"))if(const auto name=XELP::model(profile))gpu->setProperty("model",const_cast<char *>(name),static_cast<unsigned>(strlen(name)+1));
  }
  // Capture the unmodified firmware/GT state before admitting a new backend.
  if(!active && (profile.family==XELP::Family::AlderLakeS ||
@@ -114,7 +114,7 @@ bool XeHost::wrapPanelSetDisplay(IOService *panel,IOService *display) {
   framebuffer->getAttributeForConnection(0,'bklt',pwm)==kIOReturnSuccess;
  OSDictionary *heldProfiles=nullptr;
  if(range && uid && product && pwm[1]<=UINT32_MAX && pwm[2]<=UINT32_MAX &&
-    XeBacklightProfile::eligible(uid->isEqualTo("19") ? 19 : 0,pwm[1],pwm[2],internal)) {
+    XeBacklightProfile::eligible(uid->isEqualTo("19") ? 19 : 0,uint32_t(pwm[1]),uint32_t(pwm[2]),internal)) {
   auto original=OSDynamicCast(OSDictionary,panel->getProperty("ApplePanels"));
   if(original && !panel->getProperty("ApplePanel")) {
    char key[32];snprintf(key,sizeof(key),"F19T%04x",product->unsigned32BitValue());

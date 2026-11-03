@@ -22,7 +22,7 @@ struct TGLPanelDepth {
   if(encoding!=1 || !maximum)return requested;
   for(unsigned i=0;i<5;++i)if(requested==(1U<<i)) {
    if(bits[i]<=maximum)return requested;
-   for(int j=int(i)-1;j>=0;--j)if(bits[j]<=maximum)return 1U<<j;
+   for(int j=int(i)-1;j>=0;--j)if(bits[j]<=maximum)return uint16_t(1U<<j);
   }
   return requested;
  }

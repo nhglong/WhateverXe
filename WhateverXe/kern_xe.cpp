@@ -847,7 +847,7 @@ static bool adlnKernelReuseCopy(void *context,void **image,void **posh) {
  }
  auto object=static_cast<OSObject *>(context);
  q[3]=owner;q[4]=c;q[5]=uint32_t(id);q[6]=descriptor;q[7]=cpu;
- q[8]=object->getRetainCount();object->retain();q[9]=object->getRetainCount();
+ q[8]=uint64_t(object->getRetainCount());object->retain();q[9]=uint64_t(object->getRetainCount());
  adlnKernelReuseOwned=object;q[10]=1;adlnKernelReusePublish();
  // Stamp3 has completed before this exact native copy caller. The native
  // reference and our extra reference are both alive; later cleanup is intact.
@@ -890,7 +890,7 @@ static __attribute__((noinline)) void adlnRunKernelContextTrial(IOService *owner
  if(reuseTrial && qualified) {
   auto r=adlnKernelReuseReceipt;
   uint64_t stampBase=0,stampIndex=0,retired=0,control=0,descriptor=0;
-  r[11]=context->getRetainCount();r[12]=q[7];
+  r[11]=uint64_t(context->getRetainCount());r[12]=q[7];
   qualified=adlnKernelReuseReady && r[10]==1 && r[11]==(checkKernelArgument("-wex-adln-kernel-early")?2:1) && r[4]==q[7] &&
    r[3]==q[4] && Display13FBMemory::field<uint32_t>(context,0x7C)==1 &&
    tglVMRead(q[7]+0x89,descriptor) && descriptor==r[6] &&
@@ -1896,10 +1896,10 @@ static void tglUpdateMMIOMap(IOMemoryMap *mapping) {
      mapping->getLength()==0x1000000 && q[1] && !(q[2]&kIOMapReadOnly) &&
      tglMMIOMapEvidence[4]==0 && tglMMIOMapEvidence[5]==tglVM.pciBAR+0x2510 &&
      tglMMIOMapEvidence[6]==12 && q[4]==2) {
-  const auto options=(q[2]&~kIOMapCacheMask)|kIOMapInhibitCache;
+  const auto options=(uint32_t(q[2])&~uint32_t(kIOMapCacheMask))|uint32_t(kIOMapInhibitCache);
   // Drain this CPU's prior WC stores before requesting the native transition.
   asm volatile("mfence" ::: "memory");
-  q[3]=tglProtectCacheMode(reinterpret_cast<void *>(tglKernelMap),q[1],mapping->getLength(),options);
+  q[3]=uint64_t(tglProtectCacheMode(reinterpret_cast<void *>(tglKernelMap),q[1],mapping->getLength(),options));
   tglCheckMMIOMap(mapping);
   tglMMIOUCReady=tglMMIOUCReady && q[3]==0;
   IORegistryEntry::getRegistryRoot()->setProperty("TGLMMIOStrongUCPreflight",tglMMIOUCReady);
@@ -2283,7 +2283,7 @@ void tglVMPrepare(KernelPatcher &patcher,IOPCIDevice *pci) {
   const uint8_t callPrefix[] {0x48,0x89,0xDE,0xE8};
   if (memcmp(reinterpret_cast<void *>(verify+0x10),callPrefix,sizeof(callPrefix))) return;
   int32_t displacement;memcpy(&displacement,reinterpret_cast<void *>(verify+0x14),4);
-  const auto target=verify+0x18+displacement;
+  const auto target=verify+0x18+uint64_t(int64_t(displacement));
   if (target!=verify-(dp1 ? 0x3930 : monterey ? 0x4190 : ventura ? 0x3D70 : sonoma ? 0x3EF0 : 0x3AB0)) return;
   const uint8_t rootLoad[] {0x48,0x8B,0x47,0x50};
   if (memcmp(reinterpret_cast<void *>(target+0x20),rootLoad,sizeof(rootLoad))) return;
@@ -2625,7 +2625,7 @@ static void tglFillSubmitCapture(TGLSubmitCapture::Record &r,uint64_t ctx,uint64
   for (unsigned kind=0;kind<2;++kind) {
    const uint64_t cpu=kind ? q[RingCPU] : q[LRCCPU];
    const uint64_t gpu=kind ? q[RingGPU] : (q[Descriptor]&0xFFFFF000ULL);
-   const unsigned pages=kind ? q[RingLength]/4096 : q[LRCSize]/4096;
+   const auto pages=kind ? q[RingLength]/4096 : q[LRCSize]/4096;
    for (unsigned p=0;p<pages && index<arrsize(r.pages);++p,++index) {
     if (kind && !(q[CopiedPages]&(1ULL<<p))) continue;
     const uint64_t g=gpu+p*4096;auto &v=r.pages[index];v[0]=g;
@@ -2703,7 +2703,7 @@ static void tglFillSubmitCapture(TGLSubmitCapture::Record &r,uint64_t ctx,uint64
    uint64_t task=0;
    o[7]=tglVMRead(ctx+0x58,task) && task==q[Task] &&
     tglVMRead(task+0x260,o[5]) && o[5]==q[Table];
-   const auto m=TGLPPGTT::inspect(q[Table],0,tglVMRead);o[6]=m.rootPhysical;
+   const auto ownershipMapping=TGLPPGTT::inspect(q[Table],0,tglVMRead);o[6]=ownershipMapping.rootPhysical;
    o[7]=o[7] && o[6]==q[Root];
   }
  }
@@ -2789,7 +2789,7 @@ static bool adlnQueueTraceProcessMatches(uint64_t queue) {
  uint64_t word=0;if(!tglVMRead(queue+0x578,word) || !uint32_t(word))return false;
  const auto pid=uint32_t(word),selected=__atomic_load_n(&adlnQueueTracePID,__ATOMIC_ACQUIRE);
  if(selected)return selected==pid;
- char name[32] {};reinterpret_cast<void (*)(int,char *,int)>(adlnQueueTraceProcName)(pid,name,sizeof(name));
+ char name[32] {};reinterpret_cast<void (*)(int,char *,int)>(adlnQueueTraceProcName)(int(pid),name,sizeof(name));
  name[sizeof(name)-1]=0;if(strcmp(name,"adln-qtrace"))return false;
  uint32_t empty=0;__atomic_compare_exchange_n(&adlnQueueTracePID,&empty,pid,false,__ATOMIC_RELEASE,__ATOMIC_RELAXED);
  return __atomic_load_n(&adlnQueueTracePID,__ATOMIC_ACQUIRE)==pid;
@@ -3345,7 +3345,7 @@ static bool tglComboAUXDecisionSerialize(void *,void *,OSSerialize *serializer) 
  memcpy(copy+16,tglComboAUXFirst,sizeof(tglComboAUXFirst));
  memcpy(copy+16+sizeof(tglComboAUXFirst),tglComboAUXLast,sizeof(tglComboAUXLast));
  IOSimpleLockUnlock(tglAUXLock);
- auto data=OSData::withBytes(copy,size);IOFree(copy,size);if(!data)return false;
+ auto data=OSData::withBytes(copy,static_cast<unsigned>(size));IOFree(copy,size);if(!data)return false;
  const bool ok=data->serialize(serializer);data->release();return ok;
 }
 
@@ -3392,11 +3392,11 @@ static bool tglTransitionSerialize(void *,void *reference,OSSerialize *serialize
  const size_t bytes=(first?tglTransitionFirstSlots:tglTransitionSlots)*sizeof(TGLTransitionRecord);
  const size_t size=16+bytes;
  auto copy=static_cast<uint8_t *>(IOMalloc(size));if(!copy)return false;
- auto h=reinterpret_cast<uint32_t *>(copy);h[0]=1;h[2]=bytes/sizeof(TGLTransitionRecord);h[3]=sizeof(TGLTransitionRecord);
+ auto h=reinterpret_cast<uint32_t *>(copy);h[0]=1;h[2]=uint32_t(bytes/sizeof(TGLTransitionRecord));h[3]=sizeof(TGLTransitionRecord);
  const auto irq=IOSimpleLockLockDisableInterrupt(tglTransitionLock);
  h[1]=tglTransitionCount;memcpy(copy+16,first?tglTransitionFirst:tglTransitions,bytes);
  IOSimpleLockUnlockEnableInterrupt(tglTransitionLock,irq);
- auto data=OSData::withBytes(copy,size);IOFree(copy,size);if(!data)return false;
+ auto data=OSData::withBytes(copy,static_cast<unsigned>(size));IOFree(copy,size);if(!data)return false;
  const bool ok=data->serialize(serializer);data->release();return ok;
 }
 static bool tglTransitionRegister(unsigned long reg) {
@@ -3470,7 +3470,7 @@ void tglDPCDPublish() {
 	memcpy(copy + sizeof(tglDPCDFirst), tglDPCDLast, sizeof(tglDPCDLast));
 	IOSimpleLockUnlock(tglAUXLock);
 	auto root = IORegistryEntry::getRegistryRoot();
-	root->setProperty("WhateverXeDPCDFirst", copy, firstCount * sizeof(TGLDPCDRecord));
+	root->setProperty("WhateverXeDPCDFirst", copy, static_cast<unsigned>(firstCount * sizeof(TGLDPCDRecord)));
 	root->setProperty("WhateverXeDPCDLast", copy + sizeof(tglDPCDFirst), sizeof(tglDPCDLast));
 	root->setProperty("WhateverXeDPCDCount", count, 32);
 	root->setProperty("WhateverXeDPCDFirstCapacity", arrsize(tglDPCDFirst), 32);
@@ -3542,12 +3542,12 @@ static bool tglAUXControlSerialize(void *,void *reference,OSSerialize *serialize
  if(ddi>=9 || !tglAUXLock)return false;
  const size_t size=16+sizeof(tglAUXControl[0]);
  auto copy=static_cast<uint8_t *>(IOMalloc(size));if(!copy)return false;
- auto header=reinterpret_cast<uint32_t *>(copy);header[0]=1;header[1]=ddi;
+ auto header=reinterpret_cast<uint32_t *>(copy);header[0]=1;header[1]=uint32_t(ddi);
  IOSimpleLockLock(tglAUXLock);
  header[2]=tglAUXCounts[ddi];header[3]=tglAUXControlCounts[ddi];
  memcpy(copy+16,tglAUXControl[ddi],sizeof(tglAUXControl[0]));
  IOSimpleLockUnlock(tglAUXLock);
- auto data=OSData::withBytes(copy,size);IOFree(copy,size);
+ auto data=OSData::withBytes(copy,static_cast<unsigned>(size));IOFree(copy,size);
  if(!data)return false;
  const bool result=data->serialize(serializer);data->release();return result;
 }
@@ -3562,7 +3562,7 @@ static bool tglAUXLiveSerialize(void *, void *reference, OSSerialize *serializer
 	auto copy = static_cast<uint8_t *>(IOMalloc(size));
 	if (!copy) return false;
 	auto header = reinterpret_cast<uint32_t *>(copy);
-	header[0] = 1; header[1] = ddi; header[3] = arrsize(tglAUXLast[0]);
+	header[0] = 1; header[1] = uint32_t(ddi); header[3] = arrsize(tglAUXLast[0]);
 	IOSimpleLockLock(tglAUXLock);
 	header[2] = tglAUXCounts[ddi];
 	memcpy(copy + 16, tglAUXLast[ddi], sizeof(tglAUXLast[0]));
@@ -4048,8 +4048,9 @@ void XE::adlnBootstrap(IOPCIDevice *pci) {
         pci->setProperty("WEXDisplay13TCBootPorts",bootTC,sizeof(bootTC));
     }
 
-    if(displayRequested && board.dsi)
+    if(displayRequested && board.dsi) {
         XELP::DSI::captureBoot(io,result,dsiProfile,xelpMemory,barReady && reservationReady,dsiBoot);
+    }
 	bool bootstrapReady=!board.dsi || dsiBoot.usable();
 	if(!board.dsi && displayRequested && linearTest && (result.activePipes&(result.activePipes-1))) {
 		auto parked=Display13Boot::normalize(io,result,barReady && Display13FBTopology::multiOutputWiring(board) && xelpMemoryMatches(pci),board,xelpMemory,snapshot->normalize);
@@ -5645,9 +5646,9 @@ bool XE::wrapDisplay13AllocateResources(void *fb) {
 
 uint32_t XE::retireDisplay13Paths(void *raw) {
     auto fb=static_cast<IOService *>(raw);auto &c=display13FBPower;
-    const auto fail=[&]() {
+    const auto fail=[&]() -> uint32_t {
         if(c.lock){IOLockLock(c.lock);adlnFault(c.memoryFaulted,__LINE__);IOLockUnlock(c.lock);}
-        return kIOReturnNotReady;
+        return uint32_t(kIOReturnNotReady);
     };
     if(!fb || fb->getMetaClass()->getClassSize()<0x4b90 ||
        Display13FBMemory::field<void *>(fb,0x1d0)!=c.controller)return fail();
@@ -5673,9 +5674,9 @@ uint32_t XE::retireDisplay13Paths(void *raw) {
 uint32_t XE::wrapDisplay13FreeResources(void *raw) {
     auto fb=static_cast<IOService *>(raw);auto &c=display13FBPower;
     if(!fb || fb->getMetaClass()->getClassSize()<0x4b90 || !c.controller ||
-       Display13FBMemory::field<void *>(fb,0x1d0)!=c.controller)return kIOReturnNotReady;
+       Display13FBMemory::field<void *>(fb,0x1d0)!=c.controller)return uint32_t(kIOReturnNotReady);
     auto mutex=Display13FBMemory::field<IORecursiveLock *>(c.controller,0x9b8);
-    if(!mutex)return kIOReturnNotReady;
+    if(!mutex)return uint32_t(kIOReturnNotReady);
     IORecursiveLockLock(mutex);
     const auto before=Display13FBMemory::field<uint32_t>(fb,0x49e8);
     reinterpret_cast<void (*)(void *)>(callbackXE->orgDisplay13FreeResources)(raw);
@@ -6027,7 +6028,7 @@ IOReturn XE::wrapDisplay13FBEnableIRQ(IOService *controller) {
 	check[1]=c.state.begun;check[2]=c.state.enabled;check[3]=c.state.faulted;
 	check[4]=c.quiescing;check[5]=io.read(Display13FBIRQ::Driver);
 	check[6]=io.read(Display13FBIRQ::Master);check[7]=io.read(Display13FBIRQ::GfxMaster);
-	for(unsigned p=0;p<3;++p)if(Display13FBIRQ::powered(check[5],p)) {
+	for(unsigned p=0;p<3;++p)if(Display13FBIRQ::powered(uint32_t(check[5]),p)) {
 		check[8+3*p]=io.read(0x70008+0x1000*p);
 		check[9+3*p]=io.read(Display13FBIRQ::PipeIIR(p)+4);
 		check[10+3*p]=io.read(Display13FBIRQ::PipeIIR(p)-4);
@@ -6046,7 +6047,7 @@ IOReturn XE::wrapDisplay13FBEnableIRQ(IOService *controller) {
 	check[23]=static_cast<uint32_t>(c.status);check[24]=c.state.begun;
 	check[25]=c.state.enabled;check[26]=c.state.faulted;check[27]=c.state.active;check[28]=c.state.configured;
 	check[29]=io.read(Display13FBIRQ::Master);check[30]=io.read(Display13FBIRQ::GfxMaster);
-	if(Display13FBIRQ::powered(check[5],0))for(unsigned d=0;d<3;++d)check[31+d]=io.read(Display13FBIRQ::DSBInterrupt(0,d));
+	if(Display13FBIRQ::powered(uint32_t(check[5]),0))for(unsigned d=0;d<3;++d)check[31+d]=io.read(Display13FBIRQ::DSBInterrupt(0,d));
 	check[34]=io.read(Display13FBIRQ::DDIControl);check[35]=io.read(0xC400C)&~io.read(0xC4004);
 	check[36]=static_cast<uint32_t>(c.state.firstFailure);
 	check[37]=c.state.failureRegister;check[38]=c.state.failureBits;
@@ -6180,7 +6181,7 @@ bool XE::processDisplay13FramebufferGTT(KernelPatcher &patcher,size_t index,mach
 		auto site=reinterpret_cast<uint8_t *>(address+sites[i]);
 		if(memcmp(reinterpret_cast<void *>(address+anchors[i]),operands[i],lengths[i]) || *site!=0xE8)return false;
 		int32_t old;memcpy(&old,site+1,4);
-		const auto target=address+sites[i]+5+old;
+		const auto target=address+sites[i]+5+uint64_t(int64_t(old));
 		if(i<3) {if(i && target!=readTarget)return false;readTarget=target;}
 		const auto replacement=i<3 ? reinterpret_cast<uintptr_t>(wrapAlderLakeNGTTRead) : reinterpret_cast<uintptr_t>(wrapAlderLakeNDSBSetup);
 		const int64_t distance=static_cast<int64_t>(replacement)-static_cast<int64_t>(address+sites[i]+5);
@@ -6277,7 +6278,7 @@ void XE::adlnSysMemOperation(IOService *controller,uint32_t slot,bool release) {
 	uint32_t stage=1;
 	auto publish=[&](uint64_t *record,size_t bytes) {
 		char key[48];snprintf(key,sizeof(key),"N97SysMemSlot%u%s",slot,release ? "Free" : "Allocate");
-		IORegistryEntry::getRegistryRoot()->setProperty(key,record,bytes);
+		IORegistryEntry::getRegistryRoot()->setProperty(key,record,static_cast<unsigned>(bytes));
 	};
 	auto unavailable=[&]() {
 		uint64_t record[15] {2,release,slot,UINT32_MAX};record[14]=stage;publish(record,sizeof(record));
@@ -6734,11 +6735,11 @@ uint32_t XE::wrapDisplay13TCMode(OSObject *port,uint32_t wanted) {
     auto config=port && port->getMetaClass()->getClassSize()>=0x580 ? Display13FBMemory::field<uint32_t *>(port,0x548) : nullptr;
     if(self->adlnOutputWiring.dsi && config && config[0]==0)return setDSIPortMode(port,wanted);
     if(config && config[0]<3)return FunctionCast(wrapDisplay13TCMode,self->orgDisplay13TCMode)(port,wanted);
-    if(!c.lock)return kIOReturnNotReady;
+    if(!c.lock)return uint32_t(kIOReturnNotReady);
     IOLockLock(c.lock);const auto ddi=display13TCTarget(port,wanted==0);
     const auto selected=ddi<7 && (self->adlnOutputWiring.typeC&(1U<<ddi))?3U:4U;
     if(ddi>=7 || (wanted!=0 && wanted!=selected) || c.tcBusy[ddi-3] ||
-       (c.tcObject[ddi-3] && c.tcObject[ddi-3]!=port)) {IOLockUnlock(c.lock);return kIOReturnNotReady;}
+       (c.tcObject[ddi-3] && c.tcObject[ddi-3]!=port)) {IOLockUnlock(c.lock);return uint32_t(kIOReturnNotReady);}
     const auto tc=ddi-3;auto &mode=c.tcMode[tc];
     if(!c.tcObject[tc]){c.tcObject[tc]=port;port->retain();}
     struct IO : Display13FBTCIO {
@@ -6806,7 +6807,7 @@ uint32_t XE::wrapDisplay13TCMode(OSObject *port,uint32_t wanted) {
         uint32_t detail[] {1,ddi,result.phy.before,result.phy.after,result.phy.writes,result.phy.elapsedUs};
         root->setProperty("WEXDisplay13TCModeFailureState",detail,sizeof(detail));
     }
-    return done ? kIOReturnSuccess : kIOReturnNotReady;
+    return done ? kIOReturnSuccess : uint32_t(kIOReturnNotReady);
 }
 
 void XE::drainDisplay13TCMode(unsigned ddi) {
@@ -6902,7 +6903,7 @@ uint32_t XE::wrapDisplay13TCSignal(void *raw,uint32_t swing,uint32_t emphasis,vo
     auto self=callbackXE;auto port=static_cast<OSObject *>(raw);auto &c=display13FBPower;
     auto config=port && port->getMetaClass()->getClassSize()>=0x580 ? Display13FBMemory::field<uint32_t *>(port,0x548):nullptr;
     if(config && config[0]<3)return FunctionCast(wrapDisplay13TCSignal,self->orgDisplay13SignalLevels)(raw,swing,emphasis,drive);
-    if(!c.lock)return kIOReturnNotReady;IOLockLock(c.lock);const auto ddi=display13TCTarget(port);
+    if(!c.lock)return uint32_t(kIOReturnNotReady);IOLockLock(c.lock);const auto ddi=display13TCTarget(port);
     // TMDS signal parameters were programmed while the path was stopped,
     // before native enablePipe. Do not run TGL DP's late voltage sequence.
     bool ok=false;if(ddi<7){
@@ -6914,12 +6915,12 @@ uint32_t XE::wrapDisplay13TCSignal(void *raw,uint32_t swing,uint32_t emphasis,vo
         }
     }
     if(!ok)adlnFault(c.clockFaulted,__LINE__);IOLockUnlock(c.lock);
-    return ok ? 0 : kIOReturnNotReady;
+    return ok ? 0 : uint32_t(kIOReturnNotReady);
 }
 
 uint32_t XE::wrapDisplay13DPLightUp(void *controller,void *fb,void *path,const void *timing) {
     auto object=static_cast<OSObject *>(path);
-    if(!object || object->getMetaClass()->getClassSize()<0x3730)return kIOReturnNotReady;
+    if(!object || object->getMetaClass()->getClassSize()<0x3730)return uint32_t(kIOReturnNotReady);
     auto port=Display13FBMemory::field<OSObject *>(path,0x3648);
     if(port && port->getMetaClass()->getClassSize()>=0x580 && Display13FBMemory::field<uint32_t>(port,0x120)>=3)
         return wrapDisplay13TCLightUp(controller,fb,path,timing);
@@ -6981,7 +6982,7 @@ void XE::wrapDisplay13DPPortWrite(void *port,uint32_t reg,uint32_t value) {
 uint32_t XE::wrapDisplay13TCLightUp(void *controller,void *rawFB,void *rawPath,const void *timing) {
     auto self=callbackXE;auto &c=display13FBPower;
     auto fb=static_cast<IOService *>(rawFB);auto path=static_cast<OSObject *>(rawPath);
-    if(!c.lock || !path || path->getMetaClass()->getClassSize()<0x3730)return kIOReturnNotReady;
+    if(!c.lock || !path || path->getMetaClass()->getClassSize()<0x3730)return uint32_t(kIOReturnNotReady);
     auto port=Display13FBMemory::field<OSObject *>(path,0x3648);
     if(port && port->getMetaClass()->getClassSize()>=0x580 && Display13FBMemory::field<uint32_t>(port,0x120)<3)
         return FunctionCast(wrapDisplay13TCLightUp,self->orgDisplay13TCLightUp)(controller,rawFB,rawPath,timing);
@@ -7046,7 +7047,7 @@ uint32_t XE::wrapDisplay13TCSetMode(void *controller,void *fb,const void *timing
         auto service=static_cast<IOService *>(fb);
         const auto path=service && service->getMetaClass()->getClassSize()>=0x4B90 ?
             Display13FBMemory::singlePath<OSObject *>(service) : nullptr;
-        if(dsiLifecycleTarget(service,path))return kIOReturnNotReady;
+        if(dsiLifecycleTarget(service,path))return uint32_t(kIOReturnNotReady);
     }
     return Display13TC::finishMode(
         [&](){return FunctionCast(wrapDisplay13TCSetMode,self->orgDisplay13TCSetMode)(controller,fb,timing);},
@@ -7285,34 +7286,34 @@ bool XE::display13AUXReady(void *port,bool command,bool retained) {
 }
 
 uint32_t XE::wrapDisplay13ReadAUX(void *port,uint32_t address,void *data,uint32_t length) {
- auto &c=display13FBPower;if(!c.lock)return kIOReturnNotReady;
+ auto &c=display13FBPower;if(!c.lock)return uint32_t(kIOReturnNotReady);
  IOLockLock(c.lock);const bool ready=display13AUXReady(port,false);IOLockUnlock(c.lock);
- if(!ready)return kIOReturnNotReady;
+ if(!ready)return uint32_t(kIOReturnNotReady);
  const auto r=FunctionCast(wrapDisplay13ReadAUX,callbackXE->orgDisplay13ReadAUX)(port,address,data,length);
  IOLockLock(c.lock);const bool complete=display13AUXReady(port,false);IOLockUnlock(c.lock);
- return r ? r : complete ? 0 : kIOReturnNotReady;
+ return r ? r : complete ? 0 : uint32_t(kIOReturnNotReady);
 }
 uint32_t XE::wrapDisplay13WriteAUX(void *port,uint32_t address,void *data,uint32_t length) {
- auto &c=display13FBPower;if(!c.lock)return kIOReturnNotReady;
+ auto &c=display13FBPower;if(!c.lock)return uint32_t(kIOReturnNotReady);
  IOLockLock(c.lock);const bool ready=display13AUXReady(port,false);IOLockUnlock(c.lock);
- if(!ready)return kIOReturnNotReady;
+ if(!ready)return uint32_t(kIOReturnNotReady);
  const auto r=FunctionCast(wrapDisplay13WriteAUX,callbackXE->orgDisplay13WriteAUX)(port,address,data,length);
  IOLockLock(c.lock);const bool complete=display13AUXReady(port,false);IOLockUnlock(c.lock);
- return r ? r : complete ? 0 : kIOReturnNotReady;
+ return r ? r : complete ? 0 : uint32_t(kIOReturnNotReady);
 }
 uint32_t XE::wrapDisplay13I2CAUX(void *port,uint32_t command,uint32_t *packet,uint32_t length,uint8_t flag) {
- auto &c=display13FBPower;if(!c.lock)return kIOReturnNotReady;
+ auto &c=display13FBPower;if(!c.lock)return uint32_t(kIOReturnNotReady);
  IOLockLock(c.lock);const bool ready=display13AUXReady(port,false);IOLockUnlock(c.lock);
- if(!ready)return kIOReturnNotReady;
+ if(!ready)return uint32_t(kIOReturnNotReady);
  const auto r=FunctionCast(wrapDisplay13I2CAUX,callbackXE->orgDisplay13I2CAUX)(port,command,packet,length,flag);
  IOLockLock(c.lock);const bool complete=display13AUXReady(port,false);IOLockUnlock(c.lock);
- return r ? r : complete ? 0 : kIOReturnNotReady;
+ return r ? r : complete ? 0 : uint32_t(kIOReturnNotReady);
 }
 uint32_t XE::wrapDisplay13RunAUX(void *port,uint32_t command,uint32_t *packet,uint32_t length,bool flag) {
- auto &c=display13FBPower;if(!c.lock)return kIOReturnNotReady;
+ auto &c=display13FBPower;if(!c.lock)return uint32_t(kIOReturnNotReady);
  IOLockLock(c.lock);const bool ready=display13AUXReady(port,true);
  const auto ddi=ready ? Display13FBMemory::field<uint32_t>(port,0x120) : 7;
- IOLockUnlock(c.lock);if(!ready)return kIOReturnNotReady;
+ IOLockUnlock(c.lock);if(!ready)return uint32_t(kIOReturnNotReady);
  const auto r=FunctionCast(wrapDisplay13RunAUX,callbackXE->orgDisplay13RunAUX)(port,command,packet,length,flag);
  IOLockLock(c.lock);Display13FBPowerIO io {c.map};const bool held=c.bridge.endAUXCommand(io,ddi);
  // HPD/assignment can disappear while the donor waits for the AUX reply.
@@ -7320,7 +7321,7 @@ uint32_t XE::wrapDisplay13RunAUX(void *port,uint32_t command,uint32_t *packet,ui
  const bool protectedCompletion=held && display13AUXReady(port,false,true);
  const bool complete=protectedCompletion && display13AUXReady(port,false);
  if(!protectedCompletion)adlnFault(c.bridge.state.faulted,__LINE__);
- IOLockUnlock(c.lock);return r ? r : complete ? 0 : kIOReturnNotReady;
+ IOLockUnlock(c.lock);return r ? r : complete ? 0 : uint32_t(kIOReturnNotReady);
 }
 
 // The donor protocol owns reservation, adoption and pool serialization once.
@@ -7446,11 +7447,11 @@ uint32_t XE::wrapDisplay13PortTraining(void *port,void *request) {
  auto s=callbackXE;auto &c=display13FBPower;
  if(!s->display13FramingReady || display13HDMIPort(port))
   return FunctionCast(wrapDisplay13PortTraining,s->orgDisplay13PortTraining)(port,request);
- if(!c.lock)return kIOReturnNotReady;
+ if(!c.lock)return uint32_t(kIOReturnNotReady);
  IOLockLock(c.lock);auto p=display13SSTPort(port);
  const bool valid=p && p[0x115]==1 && !p[0x117] && p[0x10]<=1 && p[0x11A]<=1;
  if(valid)p[0x11A]&=p[0x10];
- IOLockUnlock(c.lock);if(!valid)return kIOReturnNotReady;
+ IOLockUnlock(c.lock);if(!valid)return uint32_t(kIOReturnNotReady);
  return FunctionCast(wrapDisplay13PortTraining,s->orgDisplay13PortTraining)(port,request);
 }
 // Deferred native clock writes are per pipe and protected by the display
@@ -7597,21 +7598,21 @@ uint32_t XE::wrapDisplay13EnablePort(void *port) {
  auto s=callbackXE;
  if(!s->adlnOutputWiring.links() || display13HDMIPort(port))
   return FunctionCast(wrapDisplay13EnablePort,s->orgDisplay13EnablePort)(port);
- if(!display13MainLinkAUX(port,true))return kIOReturnNotReady;
+ if(!display13MainLinkAUX(port,true))return uint32_t(kIOReturnNotReady);
  const auto result=FunctionCast(wrapDisplay13EnablePort,s->orgDisplay13EnablePort)(port);
  if(result)display13MainLinkAUX(port,false); // Retain AUX if partial enable left the buffer active.
- return result ? result : display13MainLinkAUX(port,true) ? 0 : kIOReturnNotReady;
+ return result ? result : display13MainLinkAUX(port,true) ? 0 : uint32_t(kIOReturnNotReady);
 }
 
 uint32_t XE::wrapDisplay13DisablePort(void *port) {
  auto s=callbackXE;
  if(!s->adlnOutputWiring.links() || display13HDMIPort(port))
   return FunctionCast(wrapDisplay13DisablePort,s->orgDisplay13DisablePort)(port);
- if(!display13MainLinkAUX(port,true,true))return kIOReturnNotReady;
+ if(!display13MainLinkAUX(port,true,true))return uint32_t(kIOReturnNotReady);
  const auto result=FunctionCast(wrapDisplay13DisablePort,s->orgDisplay13DisablePort)(port);
- if(!result && s->display13ClockOrderReady && !display13StopTranscoder(port))return kIOReturnNotReady;
+ if(!result && s->display13ClockOrderReady && !display13StopTranscoder(port))return uint32_t(kIOReturnNotReady);
  const bool released=display13MainLinkAUX(port,false,true);
- return result ? result : released ? 0 : kIOReturnNotReady;
+ return result ? result : released ? 0 : uint32_t(kIOReturnNotReady);
 }
 
 uint32_t XE::wrapDisplay13SignalLevels(void *port,uint32_t swing,uint32_t emphasis,void *overrideConfig) {
@@ -7624,8 +7625,8 @@ uint32_t XE::wrapDisplay13SignalLevels(void *port,uint32_t swing,uint32_t emphas
  // No protocol replacement for Combo HDMI; preserve the donor's behavior.
  if(!s->adlnOutputWiring.links() || display13HDMIPort(port))
   return FunctionCast(wrapDisplay13SignalLevels,s->orgDisplay13SignalLevels)(port,swing,emphasis,overrideConfig);
- if(!c.lock)return kIOReturnNotReady;
- IOLockLock(c.lock);auto p=display13SSTPort(port);uint32_t result=kIOReturnNotReady;
+ if(!c.lock)return uint32_t(kIOReturnNotReady);
+ IOLockLock(c.lock);auto p=display13SSTPort(port);uint32_t result=uint32_t(kIOReturnNotReady);
  if(p && !overrideConfig) {
   const auto ddi=Display13FBMemory::field<uint32_t>(p,0x120);TGLComboSignal selected;
   Display13FBPowerIO io{c.map};
@@ -7645,7 +7646,7 @@ uint32_t XE::wrapDisplay13TrainingPattern(void *path,uint32_t pattern) {
  auto s=callbackXE;auto &c=display13FBPower;
  if(!s->adlnOutputWiring.links())return FunctionCast(wrapDisplay13TrainingPattern,s->orgDisplay13TrainingPattern)(path,pattern);
  auto object=static_cast<OSObject *>(path);
- if(!c.lock || !object || object->getMetaClass()->getClassSize()<0x3730)return kIOReturnNotReady;
+ if(!c.lock || !object || object->getMetaClass()->getClassSize()<0x3730)return uint32_t(kIOReturnNotReady);
  if(display13HDMIPort(Display13FBMemory::field<void *>(path,0x3648)))
   return FunctionCast(wrapDisplay13TrainingPattern,s->orgDisplay13TrainingPattern)(path,pattern);
  uint32_t reservedDDI=UINT32_MAX,reservedPipe=UINT32_MAX;
@@ -7682,17 +7683,17 @@ uint32_t XE::wrapDisplay13TrainingPattern(void *path,uint32_t pattern) {
   }
   IOLockUnlock(c.lock);return ok;
  };
- if(!program(true))return kIOReturnNotReady;
+ if(!program(true))return uint32_t(kIOReturnNotReady);
  const auto result=FunctionCast(wrapDisplay13TrainingPattern,s->orgDisplay13TrainingPattern)(path,pattern);
  if(result || pattern>5)return result;
- return program(false)?0:kIOReturnNotReady;
+ return program(false)?0:uint32_t(kIOReturnNotReady);
 }
 uint32_t XE::wrapDisplay13GMBus(IOService *controller,uint32_t bus,uint32_t speed,void *request) {
     // Extending the donor's pin bound is not permission to use an arbitrary
     // Type-C DDC bus. Only the retained controller's selected TMDS wiring
     // may issue requests to pins9..12; pin8 remains excluded.
     if(bus>=8 && (controller!=callbackXE->adlnTopologyController ||
-       !callbackXE->adlnOutputWiring.usesDDC(bus)))return kIOReturnBadArgument;
+       !callbackXE->adlnOutputWiring.usesDDC(bus)))return uint32_t(kIOReturnBadArgument);
     static uint32_t count {}; const auto call=__sync_add_and_fetch(&count,1);
     uint64_t r[21] {3,call,bus,speed};auto req=static_cast<uint8_t *>(request);
     if(req) {memcpy(r+4,req,16);r[6]=*reinterpret_cast<uint32_t *>(req+0x28);r[7]=*reinterpret_cast<uint32_t *>(req+0x38);}
@@ -7905,8 +7906,8 @@ void XE::wrapAlderLakeNGamma10(void *path,void *transaction,uint32_t control) {
         r[7]=p[0x32A6];r[8]=*reinterpret_cast<uint32_t *>(p+0x32A8);
         for(unsigned i=0;i<9;++i)r[9+i]=*reinterpret_cast<uint32_t *>(p+0x14+4*i);
         if(slot && *reinterpret_cast<void **>(fb+0x4A40)==display13FBPower.access &&
-           Display13Color::registerPair(r[3],r[9],r[10],false)) {
-            slot->indexReg=r[9];slot->dataReg=r[10];slot->userGamma=r[5]==6;slot->access=*reinterpret_cast<void **>(fb+0x4A40);
+           Display13Color::registerPair(unsigned(r[3]),uint32_t(r[9]),uint32_t(r[10]),false)) {
+            slot->indexReg=uint32_t(r[9]);slot->dataReg=uint32_t(r[10]);slot->userGamma=r[5]==6;slot->access=*reinterpret_cast<void **>(fb+0x4A40);
         } else if(slot)slot->indexReg=slot->dataReg=0;
     }
     FunctionCast(wrapAlderLakeNGamma10,callbackXE->orgAlderLakeNGamma10)(path,transaction,control);
@@ -8030,7 +8031,7 @@ void XE::wrapDisplay13GMBusWrite(void *access,uint64_t reg,uint32_t value) {
                 if(arbitration[6]!=arbitration[5]) {
                     // Native enablePipe owns its FB mutex and powered pipe.
                     // Set the WA before its existing PIPECONF enable write.
-                    FunctionCast(wrapDisplay13GMBusWrite,callbackXE->orgDisplay13GMBusWrite)(access,0x70028+bank,arbitration[6]);
+                    FunctionCast(wrapDisplay13GMBusWrite,callbackXE->orgDisplay13GMBusWrite)(access,0x70028+bank,uint32_t(arbitration[6]));
                     arbitration[13]=1;
                 }
             }
@@ -8046,7 +8047,7 @@ void XE::wrapDisplay13GMBusWrite(void *access,uint64_t reg,uint32_t value) {
     FunctionCast(wrapDisplay13GMBusWrite,callbackXE->orgDisplay13GMBusWrite)(access,reg,value);
     if(arbitrationRecorded) {
         const auto pipe=static_cast<unsigned>(arbitration[1]);Display13FBDBUFIO io {display.map};
-        arbitration[8]=io.read(reg);
+        arbitration[8]=io.read(uint32_t(reg));
         arbitration[14]=arbitration[7]==arbitration[6] &&
             !((arbitration[8]^value)&~(reg==0x70008+0x1000*pipe ? (1U<<30) : 0U));
         const auto slot=__sync_fetch_and_add(&adlnArbitrationCounts[pipe],1);arbitration[11]=slot+1;
@@ -8169,7 +8170,7 @@ uint32_t XE::wrapDisplay13TrialCommit(void *controller,void *request,void *outpu
 
 uint32_t XE::wrapFramebufferUserClient(IOService *fb,void *task,void *security,uint32_t type,void **client) {
  FramebufferDonor::Call admission(callbackXE->framebufferProtocolCalls);
- if(!admission){if(client)*client=nullptr;return kIOReturnNotReady;}
+ if(!admission){if(client)*client=nullptr;return uint32_t(kIOReturnNotReady);}
     // Only type0 enters IOFramebuffer::open. Refuse before entering IOG: an
     // error from enableController permanently sets IOG's dead flag instead.
     // Native controller start publishes FB children before its AGDC nub.
@@ -8191,7 +8192,7 @@ uint32_t XE::wrapFramebufferUserClient(IOService *fb,void *task,void *security,u
         IORegistryEntry::getRegistryRoot()->setProperty("WEXDisplay13ClientReadiness",record,sizeof(record));
         if(!started || !registered) {
             if(client)*client=nullptr;
-            return kIOReturnNotReady;
+            return uint32_t(kIOReturnNotReady);
         }
     }
     const auto result=FunctionCast(wrapFramebufferUserClient,callbackXE->orgFramebufferUserClient)(fb,task,security,type,client);
@@ -8205,7 +8206,7 @@ uint32_t XE::wrapFramebufferAGDCCallback(IOService *controller,uint32_t event,un
     // Keep the native event filter, argument conversion and registered path.
     const bool notification=event==4 || event==0x80 || (event<=11 && (0x90FU&(1U<<event)));
     if(notification && (!controller || controller->getMetaClass()->getClassSize()<0x1C20 ||
-       !Display13FBMemory::field<uintptr_t>(controller,0x1BF8)))return kIOReturnNotReady;
+       !Display13FBMemory::field<uintptr_t>(controller,0x1BF8)))return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapFramebufferAGDCCallback,callbackXE->orgFramebufferAGDCCallback)(controller,event,argument,value);
     if(!callbackXE->display13FramebufferRequested)tglTrace(7,event,true,event,value,result,argument);
     return result;
@@ -8378,7 +8379,7 @@ void XE::wrapAlderLakeNSetupWorkLoop(IOService *controller,IOWorkLoop *workLoop)
 		Display13FBMemory::field<OSObject *>(controller,0xE20)) : nullptr;
 	const bool sourceBound=callbackXE->display13FBIRQReady && adlnIRQOwner(controller) &&
 		irqSource && pciOwner && workLoop && irqSource->getProvider()==pciOwner &&
-		irqSource->getIntIndex()>=0 && irqSource->getWorkLoop()==workLoop && irqSource->isEnabled() &&
+		uint64_t(irqSource->getIntIndex())>=0 && irqSource->getWorkLoop()==workLoop && irqSource->isEnabled() &&
 		Display13FBMemory::field<IOWorkLoop *>(controller,0xE00)==workLoop;
 	uint64_t record[32] {};Display13Power::Result result;
 	IOLockLock(c.lock);
@@ -8390,7 +8391,7 @@ void XE::wrapAlderLakeNSetupWorkLoop(IOService *controller,IOWorkLoop *workLoop)
 	// the root so a rejected handoff remains observable through SSH.
 	uint64_t check[38] {3,sourceBound,adlnIRQOwner(controller),irqSource!=nullptr};
 	if(irqSource) {
-		check[4]=irqSource->getProvider()==pci;check[5]=irqSource->getIntIndex();
+		check[4]=irqSource->getProvider()==pci;check[5]=uint64_t(irqSource->getIntIndex());
 		check[6]=irqSource->getWorkLoop()==workLoop;check[7]=irqSource->isEnabled();
 	}
 	check[8]=controller && Display13FBMemory::field<IOWorkLoop *>(controller,0xE00)==workLoop;
@@ -8405,8 +8406,8 @@ void XE::wrapAlderLakeNSetupWorkLoop(IOService *controller,IOWorkLoop *workLoop)
 			auto plane=Display13FBMemory::field<OSObject *>(path,0x32C8);auto port=Display13FBMemory::field<OSObject *>(path,0x3648);
 			if(plane && plane->getMetaClass()->getClassSize()>=0x1C8) {
 				check[22]=(Display13FBMemory::field<void *>(plane,0x68)==fb) |
-					((Display13FBMemory::field<void *>(plane,0x70)==path)<<1) | ((Display13FBMemory::field<void *>(plane,0x90)==c.access)<<2);
-				check[23]=(Display13FBMemory::field<uint32_t>(plane,0x78)==0) | ((Display13FBMemory::field<uint32_t>(plane,0x98)==0x70180)<<1);
+					(uint64_t(Display13FBMemory::field<void *>(plane,0x70)==path)<<1) | (uint64_t(Display13FBMemory::field<void *>(plane,0x90)==c.access)<<2);
+				check[23]=uint64_t(Display13FBMemory::field<uint32_t>(plane,0x78)==0) | (uint64_t(Display13FBMemory::field<uint32_t>(plane,0x98)==0x70180)<<1);
 				check[27]=Display13FBMemory::field<uint32_t>(plane,0x100);check[28]=Display13FBMemory::field<uint32_t>(plane,0x118);
 				check[29]=Display13FBMemory::field<uint32_t>(plane,0x11C);check[30]=Display13FBMemory::field<uint32_t>(plane,0x120);
 			}
@@ -8484,10 +8485,10 @@ void XE::wrapAlderLakeNSetupWorkLoop(IOService *controller,IOWorkLoop *workLoop)
                 if(dp && display13SSTPort(port)) {
                     Display13FBBootIO io{c.map};auto &boot=c.displayScratch;AlderLakeN::readDisplay(io,true,boot);
                     if(ddi>=3) {
-                        const auto source=Display13TC::Boot::capture(io,true,ddi,0);
+                        const auto bootSource=Display13TC::Boot::capture(io,true,ddi,0);
                         Display13FBTCIO tc{port,ddi-3};
                         linked=tc.owned(ddi) && tc.linkHeld() && boot.activePipes==1 &&
-                            AlderLakeN::dpSourceUnchanged(io,boot,0,ddi,0,&source);
+                            AlderLakeN::dpSourceUnchanged(io,boot,0,ddi,0,&bootSource);
                     } else if(ddi<2) {
                         result=AlderLakeN::adoptDPBootAUX(io,boot,c.bridge,c.mainLink[ddi],reinterpret_cast<uintptr_t>(port),ddi,(callbackXE->adlnOutputWiring.panel&(1U<<ddi))!=0);
                         linked=result.status==Display13Power::Status::Complete;
@@ -8782,8 +8783,8 @@ bool XE::adlnFreeStoppedPipe(IOService *fb) {
     uint64_t record[24] {1,pipe};bool freed=false,held=false;uint32_t master=0,blocked=0;bool enabled=false;
     auto controller=static_cast<IOService *>(c.controller);
     const auto slot=Display13FBMemory::field<uint8_t>(fb,0x4288);
-    const auto count=controller ? Display13FBMemory::field<uint8_t>(controller,0xDF5) : 0;
-    const auto used=controller ? Display13FBMemory::field<uint8_t>(controller,0xDF4) : 0;
+    const auto count=controller ? Display13FBMemory::field<uint8_t>(controller,0xDF5) : 0U;
+    const auto used=controller ? Display13FBMemory::field<uint8_t>(controller,0xDF4) : 0U;
     const auto mask=controller ? Display13FBMemory::field<uint32_t>(controller,0xDF0) : 0;
     const auto surface=Display13FBMemory::field<uintptr_t>(fb,0x4348);
     const auto pool=slot<3 ? Display13FBMemory::pool(controller,slot) : Display13FBMemory::Pool {};
@@ -8885,10 +8886,10 @@ uint32_t XE::releaseDisplay13Path(IOService *fb,OSObject *path) {
     }
     auto &c=display13FBPower;
     if(!c.lock || !fb || !path || fb->getMetaClass()->getClassSize()<0x4B90 || path->getMetaClass()->getClassSize()<0x3730) {
-        return kIOReturnNotReady;
+        return uint32_t(kIOReturnNotReady);
     }
     auto mutex=Display13FBMemory::field<IORecursiveLock *>(fb,0x4220);
-    if(!mutex) {return kIOReturnNotReady;}
+    if(!mutex) {return uint32_t(kIOReturnNotReady);}
     fb->retain();path->retain();IORecursiveLockLock(mutex);
     uint64_t record[16] {1};bool released=false,detached=false;IOService *withdrawn=nullptr;
     IOLockLock(c.lock);const auto pipe=Display13FBMemory::boundPipe(c.pipe,fb);
@@ -8917,7 +8918,7 @@ uint32_t XE::releaseDisplay13Path(IOService *fb,OSObject *path) {
         IOLockLock(c.lock);
         if(pipe<3)c.pipe[pipe].destroyingPath=false;
         adlnFault(c.memoryFaulted,__LINE__);IOLockUnlock(c.lock);
-        IORecursiveLockUnlock(mutex);path->release();fb->release();return kIOReturnNotReady;
+        IORecursiveLockUnlock(mutex);path->release();fb->release();return uint32_t(kIOReturnNotReady);
     }
     // DSI has no audio link or normal-DDI port reset. Dispose only its proven
     // stopped native CPU associations and PG lease, never the full donor body.
@@ -8925,7 +8926,7 @@ uint32_t XE::releaseDisplay13Path(IOService *fb,OSObject *path) {
         if(!selected || !callbackXE->disposeDSIPath(fb,path)) {
             IOLockLock(c.lock);if(pipe<3)c.pipe[pipe].destroyingPath=false;
             adlnFault(c.memoryFaulted,__LINE__);IOLockUnlock(c.lock);
-            IORecursiveLockUnlock(mutex);path->release();fb->release();return kIOReturnNotReady;
+            IORecursiveLockUnlock(mutex);path->release();fb->release();return uint32_t(kIOReturnNotReady);
         }
     } else
     FunctionCast(wrapAlderLakeNFreePath,callbackXE->orgAlderLakeNFreePath)(fb,path);
@@ -8949,7 +8950,7 @@ uint32_t XE::releaseDisplay13Path(IOService *fb,OSObject *path) {
     if(removed)drainDisplay13TCMode(binding.ddi);
     OSSafeReleaseNULL(withdrawn);path->release();fb->release();
     adlnPublishMemory("N97FBPathFree",pipe,record,sizeof(record));
-    return selected && !removed ? kIOReturnNotReady : 0;
+    return selected && !removed ? uint32_t(kIOReturnNotReady) : 0;
 }
 
 void XE::wrapAlderLakeNFreePath(IOService *fb,OSObject *path) {
@@ -9368,7 +9369,7 @@ void XE::adlnWMSetup(OSObject *plane,OSObject *path,bool cursor) {
 		const bool rgbSupported=Display13WM::supportedRGBControl(ctl);
 		const bool yTiled=!cursor && ((ctl>>10)&7)==4;
 		const uint32_t width=cursor ? Display13FBMemory::field<uint32_t>(fb,0x4278) : (Display13FBMemory::field<uint32_t>(plane,0x11C)&0x1FFF)+1;
-		const auto htotal=(Display13FBMemory::field<uint16_t>(path,0x13A)&0x3FFF)+1;
+		const uint32_t htotal=(uint32_t(Display13FBMemory::field<uint16_t>(path,0x13A))&0x3FFFU)+1;
 		inputs[14]=wells;inputs[15]=rangeRaw;inputs[16]=ctl;inputs[17]=ipc;inputs[18]=cursorMode;
 		inputs[19]=width;inputs[20]=htotal;inputs[21]=rgbSupported;inputs[22]=powered;
 		inputs[23]=Display13FBMemory::field<uint32_t>(plane,0x10C);
@@ -9706,7 +9707,7 @@ static bool adlnObserveScanoutPixels(unsigned pipe,uint64_t (&q)[88]) {
     for(unsigned j=0;j<9;++j) {
         auto r=q+16+j*8;const auto x=xs[j%3],y=ys[j/3];r[0]=x|(uint64_t(y)<<32);
         uint64_t off=0;
-        if(!q[12] || (q[5]&~4095ULL) || !Display13FBMemory::scanoutSampleOffset(tiled,q[5],width,height,q[7],x,y,off) ||
+        if(!q[12] || (q[5]&~4095ULL) || !Display13FBMemory::scanoutSampleOffset(tiled,uint32_t(q[5]),uint32_t(width),uint32_t(height),uint32_t(q[7]),x,y,off) ||
            off>=0x100000000ULL-surface || 16>0x100000000ULL-surface-off)continue;
         r[1]=surface+off;
         const auto reg=0x800000+((r[1]&~4095ULL)>>9);
@@ -9832,7 +9833,7 @@ void XE::display13WMArmUpdate(IOService *fb) {
 				color[45]=pipe;
 				const auto &binding=c.pipe[pipe].powerPath.binding;
 				color[46]=binding.status==TGLFBBinding::Status::Complete ? binding.ddi : UINT32_MAX;
-				color[47]=color[46]<2 ? io.read(0x64000+0x100*color[46]) : UINT32_MAX;
+				color[47]=color[46]<2 ? io.read(uint32_t(0x64000+0x100*color[46])) : UINT32_MAX;
 				color[48]=io.read(0x46140+4*pipe);
 				color[49]=io.read(0x60200+0x1000*pipe);
 				for(unsigned i=0;i<8;++i)color[50+i]=io.read(0x60220+0x1000*pipe+4*i);
@@ -10074,7 +10075,7 @@ void XE::wrapAlderLakeNEngineDisable(void *power) {
 							irqRelease[3]=irq.handlers;irqRelease[4]=irq.scopes.display;irqRelease[5]=irq.softwareHandlers;
 							for(unsigned i=0;i<3;++i)irqRelease[6+i]=__atomic_load_n(reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(c.controller)+0xE08+4*i),__ATOMIC_ACQUIRE);
 							const auto proof=irq.scopes.total==irq.handlers ? Display13FBIRQ::beginPowerRelease(irqIO,irq.state,scope,1,7,
-								irq.scopes.display,irq.softwareHandlers,irqRelease[6],irqRelease[7],irqRelease[8]) : Display13FBIRQ::Status::Unavailable;
+								irq.scopes.display,irq.softwareHandlers,uint32_t(irqRelease[6]),uint32_t(irqRelease[7]),uint32_t(irqRelease[8])) : Display13FBIRQ::Status::Unavailable;
 							irqRelease[9]=static_cast<uint32_t>(proof);releaseReady=proof==Display13FBIRQ::Status::Complete;
 							IOSimpleLockUnlockEnableInterrupt(irq.lock,saved);
 						} else if(lastOwnedPW1)releaseReady=Display13FBIRQ::quiescent(irqIO,display13FBIRQ.state,1,0);
@@ -11165,9 +11166,9 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
 			// Small GT families keep LP silicon selector2. Validate the actual
 			// native subslice count and publish the separately admitted L3 capacity.
 			uint8_t urbReplaceAlderLakeN[] {0x83,0xFE,0x01,0x75,0x59,0x83,0xFA,0x04,0x75,0x54,0x41,0xC7,0x87,0x64,0x11,0x00,0x00,0x04,0x00,0x00,0x00};
-			if (adlnDetected) { urbReplaceAlderLakeN[7]=adlnNativeSubslices;urbReplaceAlderLakeN[17]=adlnL3Banks; }
-            if(display12SmallGTDetected) {urbReplaceAlderLakeN[7]=display12SmallGT.nativeSubslices;urbReplaceAlderLakeN[17]=display12SmallGT.l3Banks;}
-            if(tglGT2Detected) {urbReplaceAlderLakeN[7]=tglGT2Resources.nativeSubslices;urbReplaceAlderLakeN[17]=tglGT2Resources.l3Banks;}
+			if (adlnDetected) { urbReplaceAlderLakeN[7]=uint8_t(adlnNativeSubslices);urbReplaceAlderLakeN[17]=uint8_t(adlnL3Banks); }
+            if(display12SmallGTDetected) {urbReplaceAlderLakeN[7]=uint8_t(display12SmallGT.nativeSubslices);urbReplaceAlderLakeN[17]=uint8_t(display12SmallGT.l3Banks);}
+            if(tglGT2Detected) {urbReplaceAlderLakeN[7]=uint8_t(tglGT2Resources.nativeSubslices);urbReplaceAlderLakeN[17]=uint8_t(tglGT2Resources.l3Banks);}
 			const auto urbReplacement = (adlnDetected || XELP::display12SmallGT(xeProfile.gt) || tglGT2Detected) ? urbReplaceAlderLakeN :
 				(xeProfile.gt==XELP::GT::TGLG4 ? urbReplaceG4 : urbReplace);
 			auto gpuInfo=patcher.solveSymbol<mach_vm_address_t>(index,
@@ -11521,7 +11522,7 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
 				*reinterpret_cast<uint8_t *>(address+0x355CD)==0xE8;
 			if(blitInitOK) {
 				int32_t relative;memcpy(&relative,reinterpret_cast<void *>(address+0x355CE),4);
-				tglBlitPoolSubmit=address+0x355D2+relative;
+				tglBlitPoolSubmit=address+0x355D2+uint64_t(int64_t(relative));
                 // AuxKC placement can introduce this thunk on older hosts too.
                 const bool auxThunk=(XELP::kernelOS(version)==XELP::OS::BigSur) ||
                     (XELP::kernelOS(version)==XELP::OS::Monterey) ||
@@ -11626,10 +11627,10 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
 				flushOK=!memcmp(reinterpret_cast<void *>(address+flushSites[n]),flushFind[n],sizeof(flushFind[n]));
 			patcher.clearError();
 			for (size_t n=0;flushOK && n<arrsize(flushSites);++n) {
-				auto site=reinterpret_cast<uint8_t *>(address+flushSites[n]);
+				auto patchSite=reinterpret_cast<uint8_t *>(address+flushSites[n]);
 				KernelPatcher::LookupPatch patch {currentGraphics,flushFind[n],flushReplace[n],sizeof(flushFind[n]),1};
-				patcher.applyLookupPatch(&patch,site,sizeof(flushFind[n])+1);
-				flushOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(site,flushReplace[n],sizeof(flushReplace[n]));
+				patcher.applyLookupPatch(&patch,patchSite,sizeof(flushFind[n])+1);
+				flushOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(patchSite,flushReplace[n],sizeof(flushReplace[n]));
 			}
 			IORegistryEntry::getRegistryRoot()->setProperty("TGLRCSCompletionFlushReady",flushOK);
 			IORegistryEntry::getRegistryRoot()->setProperty("TGLRenderPassFlushReady",flushOK);
@@ -11683,10 +11684,10 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
 					completionCacheOK=!memcmp(reinterpret_cast<void *>(address+completionCacheSites[n]),completionCacheFind[n],sizeof(completionCacheFind[n]));
 				patcher.clearError();
 				for(size_t n=0;completionCacheOK && n<arrsize(completionCacheSites);++n) {
-					auto site=reinterpret_cast<uint8_t *>(address+completionCacheSites[n]);
+					auto patchSite=reinterpret_cast<uint8_t *>(address+completionCacheSites[n]);
 					KernelPatcher::LookupPatch patch {currentGraphics,completionCacheFind[n],completionCacheReplace[n],sizeof(completionCacheFind[n]),1};
-					patcher.applyLookupPatch(&patch,site,sizeof(completionCacheFind[n])+1);
-					completionCacheOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(site,completionCacheReplace[n],sizeof(completionCacheReplace[n]));
+					patcher.applyLookupPatch(&patch,patchSite,sizeof(completionCacheFind[n])+1);
+					completionCacheOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(patchSite,completionCacheReplace[n],sizeof(completionCacheReplace[n]));
 				}
 				patcher.clearError();
 			}
@@ -11702,10 +11703,10 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
 			patcher.clearError();
 			if(cpsOK) {
 				const uint8_t find[] {0x83,0xC8,1},replace[] {0x83,0xC8,5};
-				auto site=reinterpret_cast<uint8_t *>(address+0x7C21D);
+				auto patchSite=reinterpret_cast<uint8_t *>(address+0x7C21D);
 				KernelPatcher::LookupPatch patch {currentGraphics,find,replace,sizeof(find),1};
-				patcher.applyLookupPatch(&patch,site,sizeof(find)+1);
-				cpsOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(site,replace,sizeof(replace));
+				patcher.applyLookupPatch(&patch,patchSite,sizeof(find)+1);
+				cpsOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(patchSite,replace,sizeof(replace));
 				if(cpsOK) {tglCPSAllocate=address+0x10924;tglCPSCPUAddress=address+0x10B60;tglCPSGPUAddress=address+0x13E7C;}
 			}
 			patcher.clearError();
@@ -11762,16 +11763,16 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
 			if(adlnDetected && checkKernelArgument("-wex-adln-golden-raw")) {
 				const char *copy="__ZNK17IGHardwareContext16copyContextImageEPP24IOBufferMemoryDescriptorS2_";
 				const uint8_t head[] {0x55,0x48,0x89,0xe5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x18};
-				bool ok=cpsOK && patcher.solveSymbol<mach_vm_address_t>(index,copy,address,size)==address+0x7C762 &&
+				bool patchOK=cpsOK && patcher.solveSymbol<mach_vm_address_t>(index,copy,address,size)==address+0x7C762 &&
 				 !memcmp(reinterpret_cast<void *>(address+0x7C762),head,sizeof(head));
 				patcher.clearError();
-				if(ok) {
+				if(patchOK) {
 				 tglAlderLakeNGoldenCopyCaller=address+0x25E60;
 				 KernelPatcher::RouteRequest route[] {{copy,tglAlderLakeNGoldenCopy,tglAlderLakeNGoldenCopyOriginal}};
-				 ok=patcher.routeMultiple(index,route,arrsize(route),address,size);
+				 patchOK=patcher.routeMultiple(index,route,arrsize(route),address,size);
 				}
-				patcher.clearError();tglAlderLakeNGoldenEnabled=ok;
-				IORegistryEntry::getRegistryRoot()->setProperty("N97GoldenRawReady",ok);
+				patcher.clearError();tglAlderLakeNGoldenEnabled=patchOK;
+				IORegistryEntry::getRegistryRoot()->setProperty("N97GoldenRawReady",patchOK);
 				if(auto live=OSSerializer::forTarget(nullptr,tglAlderLakeNGoldenSerialize)) {
 				 IORegistryEntry::getRegistryRoot()->setProperty("N97GoldenRawCapture",live);live->release();
 				}
@@ -11872,20 +11873,20 @@ bool XE::processTGLAccelerator(KernelPatcher &patcher, size_t index, mach_vm_add
             if((XELP::kernelOS(version)==XELP::OS::Tahoe)) {
              const uint8_t before[] {0x41,0x89,0xf6,0x49,0x89,0xff,0x48,0x8b,0x7f,0x10,0xbe,1,0,0,0,0xba,7,0,0,0,0xe8,0x8e,0x22,0xfd,0xff};
              const uint8_t stop[] {0x42,0xc7,0x04,0x20,1,0,1,0};
-             bool ok=hangOK && size>0x569c6 &&
+             bool patchOK=hangOK && size>0x569c6 &&
               patcher.solveSymbol<mach_vm_address_t>(index,"__ZN11IGScheduler19haltCommandStreamerE10IGHwCsType",address,size)==address+0x56978 &&
               !memcmp(reinterpret_cast<void *>(address+0x56983),before,sizeof(before)) &&
               !memcmp(reinterpret_cast<void *>(address+0x569be),stop,sizeof(stop));
              const int64_t delta=reinterpret_cast<int64_t>(tglHangPreStopBridge)-static_cast<int64_t>(address+0x5699c);
-             ok=ok && delta>=INT32_MIN && delta<=INT32_MAX;
-             if(ok) {
+             patchOK=patchOK && delta>=INT32_MIN && delta<=INT32_MAX;
+             if(patchOK) {
               uint8_t call[5] {0xe8};const auto relative=static_cast<int32_t>(delta);memcpy(call+1,&relative,4);
               patcher.clearError();patcher.routeBlock(address+0x56997,call,sizeof(call));
-              ok=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(reinterpret_cast<void *>(address+0x56997),call,sizeof(call));
+              patchOK=patcher.getError()==KernelPatcher::Error::NoError && !memcmp(reinterpret_cast<void *>(address+0x56997),call,sizeof(call));
              }
-             patcher.clearError();tglHangPreStopReady=ok;
-             IORegistryEntry::getRegistryRoot()->setProperty("TGLHangPreStopReady",ok);
-             IORegistryEntry::getRegistryRoot()->setProperty("TGLSubmitHistoryReady",ok && tglSameTailEnabled);
+             patcher.clearError();tglHangPreStopReady=patchOK;
+             IORegistryEntry::getRegistryRoot()->setProperty("TGLHangPreStopReady",patchOK);
+             IORegistryEntry::getRegistryRoot()->setProperty("TGLSubmitHistoryReady",patchOK && tglSameTailEnabled);
             }
 
 			// r123: the TGL caller loops reset -> extra stamp -> one-second wait
@@ -13254,7 +13255,7 @@ void XE::display13PanelTiming(void *controller,bool apply) {
  IOLockUnlock(c.lock);
 }
 uint32_t XE::display13PanelBrightness(void *controller,uint32_t brightness) {
- if(!display13PanelCapture(controller))return kIOReturnNotReady;
+ if(!display13PanelCapture(controller))return uint32_t(kIOReturnNotReady);
  auto &c=display13FBPower;IOLockLock(c.lock);Display13FBPanelIO io{c.map};bool ok=false;uint32_t duty=0;
  if(display13PanelTarget(controller) && c.panel.pwm.duty(brightness,duty) &&
     display13PanelPowerReference(true)) {
@@ -13262,7 +13263,7 @@ uint32_t XE::display13PanelBrightness(void *controller,uint32_t brightness) {
   if(ok)*reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(controller)+0xE58)=brightness;
   ok=display13PanelPowerReference(false) && ok;
  }
- IOLockUnlock(c.lock);return ok?0:kIOReturnNotReady;
+ IOLockUnlock(c.lock);return ok?0:uint32_t(kIOReturnNotReady);
 }
 void XE::display13PanelPWMEnable(void *access) {
  auto &c=display13FBPower;if(!c.lock)return;IOLockLock(c.lock);Display13FBPanelIO io{c.map};
@@ -13277,7 +13278,7 @@ void XE::display13PanelPWMEnable(void *access) {
 uint32_t XE::wrapDisplay13PanelPower(void *controller,uint32_t state) {
  auto s=callbackXE;auto &c=display13FBPower;
  if(!s->adlnOutputWiring.panel)return FunctionCast(wrapDisplay13PanelPower,s->orgDisplay13PanelPower)(controller,state);
- if(!c.panelLock || !c.lock || !display13PanelCapture(controller))return kIOReturnNotReady;
+ if(!c.panelLock || !c.lock || !display13PanelCapture(controller))return uint32_t(kIOReturnNotReady);
  IOLockLock(c.panelLock);IOLockLock(c.lock);Display13FBPanelIO io{c.map};Display13Panel::OnGate gate;
  const bool owned=display13PanelTarget(controller) && display13PanelPowerReference(true);
  const bool ready=owned && (state!=2 || gate.begin(io));
@@ -13549,13 +13550,13 @@ bool XE::adlsCapturePanelPWM(void *controller) {
 }
 uint32_t XE::wrapADLSLightUpEDP(void *controller,void *fb,void *path,const void *timing) {
  auto s=callbackXE;
- if(s->display13FramebufferRequested && s->adlnOutputWiring.panel && !display13PanelCapture(controller))return kIOReturnNotReady;
+ if(s->display13FramebufferRequested && s->adlnOutputWiring.panel && !display13PanelCapture(controller))return uint32_t(kIOReturnNotReady);
  if(s->adlsDisplaySelected && s->adlsWiring.panel) {
-  if(!adlsCapturePanelPWM(controller))return kIOReturnNotReady;
+  if(!adlsCapturePanelPWM(controller))return uint32_t(kIOReturnNotReady);
   *reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(controller)+0xE60)=s->adlsPanelPWM.period;
  }
  const auto result=FunctionCast(wrapADLSLightUpEDP,s->orgADLSLightUpEDP)(controller,fb,path,timing);
- if(s->display13FramebufferRequested && !display13PanelHealthy())return kIOReturnNotReady;
+ if(s->display13FramebufferRequested && !display13PanelHealthy())return uint32_t(kIOReturnNotReady);
  return result;
 }
 uint32_t XE::wrapADLSPanelBacklight(void *controller,uint32_t brightness) {
@@ -13565,7 +13566,7 @@ uint32_t XE::wrapADLSPanelBacklight(void *controller,uint32_t brightness) {
   return FunctionCast(wrapADLSPanelBacklight,s->orgADLSPanelBacklight)(controller,brightness);
  void *access,*power;uint32_t duty;
  if(!adlsCapturePanelPWM(controller) || !adlsPanelPWMTarget(controller,access,power) ||
-    !s->adlsPanelPWM.duty(brightness,duty))return kIOReturnNotReady;
+    !s->adlsPanelPWM.duty(brightness,duty))return uint32_t(kIOReturnNotReady);
  auto &f=s->tglTCNativeFunctions;f.getPG(power,1);
  const auto wells=FunctionCast(wrapTGLRegisterRead,s->orgTGLRegisterRead)(access,0x45404);
  const auto fuse=FunctionCast(wrapTGLRegisterRead,s->orgTGLRegisterRead)(access,0x42000);
@@ -13574,7 +13575,7 @@ uint32_t XE::wrapADLSPanelBacklight(void *controller,uint32_t brightness) {
   wrapTGLRegisterWrite(access,0xC8258,duty);
   *reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(controller)+0xE58)=brightness;
  }
- f.putPG(power,1);return ready?0:kIOReturnNotReady;
+ f.putPG(power,1);return ready?0:uint32_t(kIOReturnNotReady);
 }
 void XE::wrapADLSPanelPWMEnable(void *access) {
  auto s=callbackXE;
@@ -14994,21 +14995,21 @@ void XE::wrapTGLCSBProcess(void *streamer,uint32_t flags) {
   const auto ptr=*reinterpret_cast<volatile uint32_t *>(io.bar+io.pointerReg);
   const auto mode=*reinterpret_cast<volatile uint32_t *>(io.bar+io.modeReg);
   char reason[1800];
-  size_t used=snprintf(reason,sizeof(reason),"CSB12-intake e=%u error=%u head=%u->%u sampledTail=%u mmioTail=%u ptr=%x mode=%x initMode=%x raw=%llx consumed=%llu HWS40..118=",
+  size_t used=size_t(snprintf(reason,sizeof(reason),"CSB12-intake e=%u error=%u head=%u->%u sampledTail=%u mmioTail=%u ptr=%x mode=%x initMode=%x raw=%llx consumed=%llu HWS40..118=",
    io.engine,static_cast<unsigned>(error),initialHead,engine.state.head,io.sampledTail,io.mmioTail,
-   ptr,mode,engine.modeAtInit,engine.lastRaw,engine.consumed);
+   ptr,mode,engine.modeAtInit,engine.lastRaw,engine.consumed));
   for (unsigned i=0;i<28 && used<sizeof(reason);++i) {
    const auto raw=*reinterpret_cast<volatile uint64_t *>(io.hwsp+0x40+i*8);
    const int n=snprintf(reason+used,sizeof(reason)-used,"%llx,",raw);
    if (n<0 || static_cast<size_t>(n)>=sizeof(reason)-used) break;
-   used+=n;
+   used+=size_t(n);
   }
   if (used+7<sizeof(reason)) {memcpy(reason+used," MMIO=",7);used+=6;}
   for (unsigned i=0;i<12 && used<sizeof(reason);++i) {
    const auto raw=io.readMMIO64(TGLCSB::mmioOffset(i));
    const int n=snprintf(reason+used,sizeof(reason)-used,"%llx,",raw);
    if (n<0 || static_cast<size_t>(n)>=sizeof(reason)-used) break;
-   used+=n;
+   used+=size_t(n);
   }
   if (used<sizeof(reason)) snprintf(reason+used,sizeof(reason)-used," afterPtr=%x afterTail=%x",
    *reinterpret_cast<volatile uint32_t *>(io.bar+io.pointerReg),
@@ -15538,7 +15539,7 @@ static void tglHostCSBFatal(const char *reason,const uint32_t *entry,void *faile
    q[14],q[13],q[16],q[15],q[19],q[18],q[29],q[30],q[31],
    __atomic_load_n(&q[51],__ATOMIC_ACQUIRE),q[45],q[47],q[48],q[49],q[50]);
   if (count<0 || static_cast<size_t>(count)>=sizeof(trail)-used) break;
-  used+=count;++kept;
+  used+=size_t(count);++kept;
  }
  const auto &submit=tglHost.submit[0];
  const bool submitted=__atomic_load_n(&submit.ready,__ATOMIC_ACQUIRE)!=0;
@@ -15554,7 +15555,7 @@ static void tglHostCSBFatal(const char *reason,const uint32_t *entry,void *faile
    v[20],v[32],v[21],v[33],v[22],v[34],v[23],v[35],v[26],v[38],v[25],v[37],
    v[56],v[40],v[41],v[42],v[43],v[44],v[45],v[46],v[47],v[48],v[49],v[50],v[51],v[52],v[53],v[54],v[55]);
   if (count<0 || static_cast<size_t>(count)>=sizeof(vm)-vmUsed) break;
-  vmUsed+=count;
+  vmUsed+=size_t(count);
  }
  auto &loads=tglFatalLogStorage.bytes.csb.loads;size_t loadUsed=0;unsigned keptLoads=0;
  const TGLHostRecord *latestLoad=nullptr;
@@ -15569,7 +15570,7 @@ static void tglHostCSBFatal(const char *reason,const uint32_t *entry,void *faile
    q[64],q[65],q[66],q[67],q[68],q[69],q[70],q[71],q[72],q[73],q[74],q[75],
    q[80],q[81],q[82],q[83],q[84],q[85],q[86],q[87],q[88],q[89],(q[92]==2 ? q[91]-q[90] : 0),q[92],q[64]==q[93] && q[65]==q[94],q[77],q[79],q[78],q[95]);
   if (count<0 || static_cast<size_t>(count)>=sizeof(loads)-loadUsed) break;
-  loadUsed+=count;++keptLoads;
+  loadUsed+=size_t(count);++keptLoads;
  }
  // Persist already-sampled arrays, without new MMIO/HWSP reads or large extra
  // stack buffers. They precede older history to survive panic-text truncation.
@@ -16134,7 +16135,7 @@ void XE::wrapTGLGuCHeaderPanic(void *guc) {
 	for (uint32_t i=0; i<arrsize(o.dma) && used < sizeof(detail); ++i) {
 		const int n = snprintf(detail+used, sizeof(detail)-used, "%u:%llx ", i, o.dma[i]);
 		if (n < 0 || static_cast<size_t>(n) >= sizeof(detail)-used) break;
-		used += n;
+		used += size_t(n);
 	}
 	// Same native fatal CSS-header condition. Do not fake transfer success or
 	// continue into scheduler/firmware execution; persist the missing evidence.
@@ -16142,13 +16143,13 @@ void XE::wrapTGLGuCHeaderPanic(void *guc) {
 	for (uint32_t i=0;i<64 && used<sizeof(boundary);++i) {
 		const int n=snprintf(boundary+used,sizeof(boundary)-used,"%u:%llx ",i,o.boundary[i/32][i%32]);
 		if (n<0 || static_cast<size_t>(n)>=sizeof(boundary)-used) break;
-		used+=n;
+		used+=size_t(n);
 	}
 	auto &preStart=tglFatalLogStorage.bytes.guc.preStart; used=0;
 	for (uint32_t i=0;i<arrsize(o.preStart) && used<sizeof(preStart);++i) {
 		const int n=snprintf(preStart+used,sizeof(preStart)-used,"%u:%llx ",i,o.preStart[i]);
 		if (n<0 || static_cast<size_t>(n)>=sizeof(preStart)-used) break;
-		used+=n;
+		used+=size_t(n);
 	}
 	PANIC("igfx", "r79 GuC CSS header missing calls=%u q=%s first(status,headers,covered,bad)=%llx,%llx,%llx,%llx,%llx repair(gpu,stage,covered,before,writes,immediateBad,finalBad)=%llx,%llx,%llx,%llx,%llx,%llx,%llx dmaRegs=%x,%x,%x,%x,%x,%x boundary=%s preStart=%s auxPTE=%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx",
 		o.calls, detail, o.first[26], o.first[29], o.first[30], o.first[37], o.first[38],
@@ -16348,7 +16349,7 @@ uint32_t XE::wrapTGLSetPortMode(void *port, uint32_t mode) {
  // This is not a port-use admission/drain gate or a hardware-idle proof.
  auto self=callbackXE;
  if(mode==3 && traceDDI<9 && (self->tglDPAltCandidates&(1U<<traceDDI)) &&
-    !tglDPAltColdReady(self->tglObservationController))return kIOReturnNotReady;
+    !tglDPAltColdReady(self->tglObservationController))return uint32_t(kIOReturnNotReady);
  auto caller = __builtin_return_address(0);
  // TC-labelled fixed DP routes use Combo mode1 on ADL-S at both
  // boot and hotplug. Preserve the original caller and immutable record guards.
@@ -16366,7 +16367,7 @@ uint32_t XE::wrapTGLSetPortMode(void *port, uint32_t mode) {
    __atomic_load_n(&self->tglTCAutoRegistered,__ATOMIC_ACQUIRE),32);
   IORegistryEntry::getRegistryRoot()->setProperty("WhateverXeTCDPHotplugRegistered",traceDDI,32);
  }
- if(!self->tglTCModeAllowed(traceDDI,mode))return kIOReturnNotReady;
+ if(!self->tglTCModeAllowed(traceDDI,mode))return uint32_t(kIOReturnNotReady);
  auto transitionLock=self->tglModeResultReady && traceDDI>=3 && traceDDI<=8 ? self->tglModeTransitionLock : nullptr;
  if(transitionLock) {
   tglAUXRecord(port,8,false,0,mode,0);
@@ -16384,7 +16385,7 @@ uint32_t XE::wrapTGLSetPortMode(void *port, uint32_t mode) {
  TGLFiaPort dpAltFia;
  if(dpAltTransaction && (!transitionLock || !tglDPAltFia(port,dpAltFia))) {
   if(transitionLock)IORecursiveLockUnlock(transitionLock);
-  return kIOReturnNotReady;
+  return uint32_t(kIOReturnNotReady);
  }
  // Select fixed-link requirements after the existing native admission. Native
  // owns cold/GOP mode acquisition on Display12, with our mapped FIA accesses.
@@ -16396,7 +16397,7 @@ uint32_t XE::wrapTGLSetPortMode(void *port, uint32_t mode) {
   traceDDI,transitionLock && self->tglNativeFiaReady);
 	auto result = FunctionCast(wrapTGLSetPortMode, callbackXE->orgTGLSetPortMode)(port, mode);
  const bool fiaFailed=fiaScope.failed();fiaScope.finish();
- if(fiaFailed && !result)result=kIOReturnNotReady;
+ if(fiaFailed && !result)result=uint32_t(kIOReturnNotReady);
  if(fiaEligible && self->tglNativeFiaReady && transitionLock){
    // No topology MMIO after native release; do not report assumed modular
    // coordinates for a transaction that may have used non-modular FIA.
@@ -16412,7 +16413,7 @@ uint32_t XE::wrapTGLSetPortMode(void *port, uint32_t mode) {
  auto portConfig=*reinterpret_cast<uint32_t **>(static_cast<uint8_t *>(port)+0x548);
  if (callbackXE->tglModeResultReady && !result && (mode==3 || mode==4) &&
      portConfig && portConfig[0]>=3 && portConfig[0]<=8 && actual!=mode) {
-  result=kIOReturnNotReady;
+  result=uint32_t(kIOReturnNotReady);
   const auto count=__atomic_add_fetch(&callbackXE->tglModeResultCorrections,1,__ATOMIC_RELAXED);
   uint32_t record[] {count,portConfig[0],mode,actual,rawResult,result};
   IORegistryEntry::getRegistryRoot()->setProperty("TGLModeResultCorrection",record,sizeof(record));
@@ -16605,7 +16606,7 @@ template<class Operation> static uint32_t tglInvokeBootstrapAUX(bool ready,unsig
  TGLTCBootstrapIO io {state,reinterpret_cast<uintptr_t>(current_thread())};
  const auto owner=reinterpret_cast<uintptr_t>(state.controller);
  if(!state.cold.bootstrapReady(io,owner)) {
-  __atomic_fetch_add(&stats.acquireErrors[kind],1,__ATOMIC_RELAXED);return kIOReturnNotReady;
+  __atomic_fetch_add(&stats.acquireErrors[kind],1,__ATOMIC_RELAXED);return uint32_t(kIOReturnNotReady);
  }
  auto result=state.cold.invokeAUX(io,owner,ddi,[&] {
   __atomic_fetch_add(&stats.scoped[kind][ddi-3],1,__ATOMIC_RELAXED);
@@ -16627,7 +16628,7 @@ template<class Operation> static uint32_t tglInvokeBootstrapAUX(bool ready,unsig
   if(slot<32)__atomic_store_n(&stats.i2cThreads[ddi-3][slot],0,__ATOMIC_RELEASE);
   return native;
  });
- if(!result.executed){__atomic_fetch_add(&stats.acquireErrors[kind],1,__ATOMIC_RELAXED);return kIOReturnNotReady;}
+ if(!result.executed){__atomic_fetch_add(&stats.acquireErrors[kind],1,__ATOMIC_RELAXED);return uint32_t(kIOReturnNotReady);}
  if(!result.release.ok())__atomic_fetch_add(&stats.releaseErrors[kind],1,__ATOMIC_RELAXED);
  if(result.operationResult)__atomic_fetch_add(&stats.nativeErrors[kind],1,__ATOMIC_RELAXED);
  return result.operationResult;
@@ -16952,9 +16953,9 @@ void XE::wrapTGLMEIInterrupt(void *driver, void *source, int count) {
 			tglMEIMapping[2] = map->getLength();
 		}
 	}
-	tglMEIRecord(driver, 0, false, 0, count);
+	tglMEIRecord(driver, 0, false, 0, uint32_t(count));
 	FunctionCast(wrapTGLMEIInterrupt, callbackXE->orgTGLMEIInterrupt)(driver, source, count);
-	tglMEIRecord(driver, 0, true, 0, count);
+	tglMEIRecord(driver, 0, true, 0, uint32_t(count));
 }
 
 bool XE::wrapTGLMEIFilter(void *driver, void *source) {
@@ -17144,7 +17145,7 @@ uint32_t XE::wrapTGLRegisterRead(void *access, unsigned long reg) {
 					}
 					char history[384] {}; size_t used = 0;
 					for (uint32_t i=0; i<found && used<sizeof(history)-1; ++i)
-						used += snprintf(history+used, sizeof(history)-used, " %llu:%llx=%llx", writes[i][0], writes[i][1], writes[i][2]);
+						used += size_t(snprintf(history+used, sizeof(history)-used, " %llu:%llx=%llx", writes[i][0], writes[i][1], writes[i][2]));
 					PANIC("igfx", "r67 PG1 fuse missing t=%llu..%llu ns fuse=%llx->%llx delay=%llu us ctl[0..3]=%llx,%llx,%llx,%llx->%llx,%llx,%llx,%llx dc=%llx->%llx cdclk=%llx->%llx pgrefs=%llx,%llx aux=%llu owned=%llu writesNewest(us:reg=value):%s",
 						r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7],r[8],r[11],r[12],r[13],r[14],r[9],r[15],r[10],r[16],r[17],r[18],r[19],r[20],history);
 				}
@@ -17350,9 +17351,9 @@ uint32_t XE::wrapTGLAGDCRegister(void *controller, void *request) {
 
 uint32_t XE::wrapTGLConnectionAttr(void *fb, int connection, uint32_t attribute, unsigned long *value) {
 	auto id = *reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(fb) + 0x1DC);
-	tglTrace(6, id, false, attribute, connection, 0, 0);
+	tglTrace(6, id, false, attribute, uint32_t(connection), 0, 0);
 	const auto r = FunctionCast(wrapTGLConnectionAttr, callbackXE->orgTGLConnectionAttr)(fb, connection, attribute, value);
-	tglTrace(6, id, true, attribute, connection, r, r == 0 && value ? *value : 0);
+	tglTrace(6, id, true, attribute, uint32_t(connection), r, r == 0 && value ? *value : 0);
 	// Preserve the key enable/flags answers even after other attributes follow.
 	if (attribute == 'cena' || attribute == 'enab' || attribute == 'flgs') {
 		char key[48]; snprintf(key, sizeof(key), "TGLWEGFB%uAttr%08x", id, attribute);
@@ -17462,7 +17463,7 @@ uint32_t XE::wrapTGLAGDCAUX(void *controller, void *request, void *output) {
 	// Retain bounded data per port and outcome; unrelated ports cannot overwrite it.
 	if (request && (req[13] || (r == 0 && output))) {
 		uint32_t record[8] = {a, b, r, 0, 0, 0, 0, 0};
-		const auto n = req[12] < 16 ? req[12] : 16;
+		const size_t n = req[12] < 16 ? size_t(req[12]) : 16U;
 		const auto data = req[13] ? req + 16 : static_cast<uint8_t *>(output) + 16;
 		memcpy(record + 4, data, n);
 		char key[48]; snprintf(key, sizeof(key), "TGLAUXPort%u%s", id, r ? "Fail" : "OK");
@@ -17885,7 +17886,7 @@ void XE::wrapTGLControllerStop(void *controller, IOService *provider) {
 
 uint32_t XE::wrapTGLTrainingBegin(void *controller, void *request) {
  FramebufferDonor::Call admission(callbackXE->framebufferProtocolCalls);
- if(!admission){return kIOReturnBusy;}
+ if(!admission){return uint32_t(kIOReturnBusy);}
 	static uint32_t observed {};
 	if (__sync_add_and_fetch(&observed, 1) == 1) tglAUXPublish();
 	auto req = static_cast<uint8_t *>(request);
@@ -17896,7 +17897,7 @@ uint32_t XE::wrapTGLTrainingBegin(void *controller, void *request) {
 		auto &lease = *selected;
 		IORecursiveLockLock(s->tglPathPoolLock);
 		if (s->tglLeasesStopping || lease.busy || s->tglAllocatingFB[lease.ddi]) {
-			IORecursiveLockUnlock(s->tglPathPoolLock); return kIOReturnBusy;
+			IORecursiveLockUnlock(s->tglPathPoolLock); return uint32_t(kIOReturnBusy);
 		}
 		const bool owned = lease.path != nullptr;
 		lease.busy = true;
@@ -17904,7 +17905,7 @@ uint32_t XE::wrapTGLTrainingBegin(void *controller, void *request) {
 		const bool released = !owned || tglReleaseTrainingLease(lease, true);
 		if (!released) {
 			IORecursiveLockLock(s->tglPathPoolLock); lease.busy = false; IORecursiveLockUnlock(s->tglPathPoolLock);
-			return kIOReturnBusy;
+			return uint32_t(kIOReturnBusy);
 		}
 	}
 	uint32_t a = 0, b = 0;
@@ -17922,7 +17923,7 @@ uint32_t XE::wrapTGLTrainingBegin(void *controller, void *request) {
 
 uint32_t XE::wrapTGLTraining(void *controller, void *request, void *output) {
  FramebufferDonor::Call admission(callbackXE->framebufferProtocolCalls);
- if(!admission){return kIOReturnBusy;}
+ if(!admission){return uint32_t(kIOReturnBusy);}
 	auto req = static_cast<uint8_t *>(request);
 	const uint32_t id = req ? *reinterpret_cast<uint32_t *>(req) : 9;
 	uint32_t a = req ? *reinterpret_cast<uint32_t *>(req + 8) : 0;
@@ -17948,7 +17949,7 @@ uint32_t XE::wrapTGLTraining(void *controller, void *request, void *output) {
 			memmove(output, request, 0x50);
 			*reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(output) + 0x38) = 0x10000;
 		}
-		r = kIOReturnBusy;
+		r = uint32_t(kIOReturnBusy);
 	} else {
 		SYSLOG("igfx", "TGL330 training native-enter id=%u", id);
         if(selected) {IORecursiveLockLock(callbackXE->tglPathPoolLock);selected->trainingThread=current_thread();IORecursiveLockUnlock(callbackXE->tglPathPoolLock);}
@@ -17990,7 +17991,7 @@ uint32_t XE::wrapTGLTraining(void *controller, void *request, void *output) {
 
 uint32_t XE::wrapTGLTrainingEnd(void *controller, void *request) {
  FramebufferDonor::Call admission(callbackXE->framebufferProtocolCalls);
- if(!admission){return kIOReturnBusy;}
+ if(!admission){return uint32_t(kIOReturnBusy);}
 	auto req = static_cast<uint8_t *>(request);
 	const uint32_t id = req ? *reinterpret_cast<uint32_t *>(req) : 9;
 	uint32_t a = req ? *reinterpret_cast<uint32_t *>(req + 8) : 0, b = 0;
@@ -18002,7 +18003,7 @@ uint32_t XE::wrapTGLTrainingEnd(void *controller, void *request) {
 		IORecursiveLockLock(s->tglPathPoolLock);
 		if (s->tglLeasesStopping || lease.busy || s->tglAllocatingFB[lease.ddi] ||
 			(lease.endCleanupPending && a != 0)) {
-			IORecursiveLockUnlock(s->tglPathPoolLock); return kIOReturnBusy;
+			IORecursiveLockUnlock(s->tglPathPoolLock); return uint32_t(kIOReturnBusy);
 		}
 		leased = lease.path != nullptr;
 		lease.busy = true;
@@ -18027,7 +18028,7 @@ uint32_t XE::wrapTGLTrainingEnd(void *controller, void *request) {
 		}
 		tglObserveTrainingLease(lease, 3, r, a);
 		if (r == 0 && a == 0 && !tglReleaseTrainingLease(lease, false))
-			r = kIOReturnBusy; // retained cleanup is not a completed End
+			r = uint32_t(kIOReturnBusy); // retained cleanup is not a completed End
 	}
 	if (selected) {
 		IORecursiveLockLock(s->tglPathPoolLock); selected->busy = false; IORecursiveLockUnlock(s->tglPathPoolLock);
@@ -18644,7 +18645,7 @@ bool XE::comboBeginClock(void *controller,void *port,bool enable,bool &keepPLL,v
     if(!choice.valid || route.phy>=snapshot.slots() || t.allocation.external[route.phy]) {
         comboClockPower(power,false);IORecursiveLockUnlock(t.lock);return false;
     }
-    if(enable)t.allocation.binding[route.phy]=choice.pll+1;
+    if(enable)t.allocation.binding[route.phy]=uint8_t(choice.pll+1);
     t.translation={route.phy,choice.pll,enable};t.before=snapshot;
     t.access=access;t.power=power;t.keepPLL=keepPLL=choice.keepPLL;
     __atomic_store_n(&t.thread,reinterpret_cast<uintptr_t>(current_thread()),__ATOMIC_RELEASE);
@@ -19181,7 +19182,7 @@ uint32_t XE::wrapTGLPixelInfo(void *fb, int mode, int depth, int aperture, void 
 	const auto result = FunctionCast(wrapTGLPixelInfo, callbackXE->orgTGLPixelInfo)(fb, mode, depth, aperture, info);
 	uint64_t r[32] {}, uptime;
 	clock_get_uptime(&uptime); absolutetime_to_nanoseconds(uptime, r);
-	r[1] = mode; r[2] = depth; r[3] = aperture; r[4] = result;
+	r[1] = uint64_t(mode); r[2] = uint64_t(depth); r[3] = uint64_t(aperture); r[4] = result;
 	r[5] = *reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(fb) + 0x4254);
 	// Stable 172-byte IOPixelInformation layout, including encoding and masks.
 	if (!result && info) memcpy(r + 6, info, 172);
@@ -19200,7 +19201,7 @@ IOMemoryDescriptor *XE::wrapTGLAperture(void *fb, int aperture) {
 	auto r = FunctionCast(wrapTGLAperture, callbackXE->orgTGLAperture)(fb, aperture);
 	uint64_t record[6] {}, uptime;
 	clock_get_uptime(&uptime); absolutetime_to_nanoseconds(uptime, record);
-	record[1] = reinterpret_cast<uintptr_t>(fb); record[2] = aperture;
+	record[1] = reinterpret_cast<uintptr_t>(fb); record[2] = uint64_t(aperture);
 	record[3] = reinterpret_cast<uintptr_t>(r);
 	if (r) { record[4] = r->getPhysicalAddress(); record[5] = r->getLength(); }
 	char key[48]; snprintf(key, sizeof(key), "TGLApertureFB%u", *reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(fb) + 0x1DC));
@@ -19470,7 +19471,7 @@ bool XE::tglProgramComboSignal(void *port,uint32_t swing,uint32_t emphasis,void 
 	const auto read=[&](uint32_t reg){return wrapTGLRegisterRead(access,reg);};
 	const auto write=[&](uint32_t reg,uint32_t value){wrapTGLRegisterWrite(access,reg,value);};
 	const bool programmed=selected.program(read,write);
-	result=programmed ? 0 : kIOReturnNotReady;
+	result=programmed ? 0 : uint32_t(kIOReturnNotReady);
 	const uint64_t detail[]={rate,lanes,selected.level,selected.low,selected.swing,selected.scalar,selected.post1};
 	tglTransitionRecord(73,true,port,config[0],swing|(emphasis<<8),result,detail,sizeof(detail));
 	return true;
@@ -19568,22 +19569,22 @@ uint32_t XE::wrapTGLSignalLevels(void *port, uint32_t swing, uint32_t emphasis, 
 	const auto rate = bytes ? *reinterpret_cast<uint32_t *>(bytes + 0x128) : 0;
 	if(callbackXE->tglDekelReady && !overrideConfig && config && config[3]==1 &&
 		*reinterpret_cast<uint32_t *>(bytes+0x550)==3 && callbackXE->tglDPSSTMode(config[0],3)) {
-  TGLFiaPort fia;if(!tglDPAltFia(port,fia))return kIOReturnNotReady;
+  TGLFiaPort fia;if(!tglDPAltFia(port,fia))return uint32_t(kIOReturnNotReady);
   const auto owned=wrapTGLPortReadReg(port,fia.owned);
   const auto aux=wrapTGLPortReadReg(port,0x45444);
   const auto io=wrapTGLPortReadReg(port,0x45454);
   const auto powerMask=3U<<(2*config[0]);
   if(owned==~0U || aux==~0U || io==~0U || !(owned&fia.readyMask) ||
-     (aux&powerMask)!=powerMask || (io&powerMask)!=powerMask)return kIOReturnNotReady;
+     (aux&powerMask)!=powerMask || (io&powerMask)!=powerMask)return uint32_t(kIOReturnNotReady);
   const auto live=wrapTGLPortReadReg(port,fia.live);
-  if(live==~0U || !(live&(1U<<(5+8*fia.index))))return kIOReturnNotReady;
+  if(live==~0U || !(live&(1U<<(5+8*fia.index))))return uint32_t(kIOReturnNotReady);
   const auto physical=(live>>(8*fia.index))&15;
 		const auto lanes=*reinterpret_cast<uint32_t *>(bytes+0x124);
 		const bool ok=TGLDPAltSignal::program(physical,lanes,rate,swing,emphasis,
 			[&](uint32_t index,bool write,uint32_t &value){return tglDekelAccess(port,index,write,value);});
 		uint64_t detail[]={physical,lanes,rate,swing,emphasis};
 		tglTransitionRecord(87,true,port,config[0],0,ok,detail,sizeof(detail));
-		return ok?0:kIOReturnNotReady;
+		return ok?0:uint32_t(kIOReturnNotReady);
 	}
 	const bool target = callbackXE->tglDekelReady && !overrideConfig && config &&
 		callbackXE->tglLegacyTCEligible(config[0]) && config[3] == 1 &&
@@ -19788,9 +19789,9 @@ void XE::wrapTGLPortWriteReg(void *port, uint32_t reg, uint32_t value) {
 	if (value & 0x80000000U) {
 		auto bytes = static_cast<uint8_t *>(port);
 		auto config = *reinterpret_cast<uint32_t **>(bytes + 0x548);
-		TGLTypeCPort mapping;
+		TGLTypeCPort typeCPort;
 		if (config && callbackXE->tglLegacyTCEligible(config[0]) && config[3] == 1 &&
-			TGLTypeCPort::resolve(config[0], mapping) && reg == mapping.ddiBuffer &&
+			TGLTypeCPort::resolve(config[0], typeCPort) && reg == typeCPort.ddiBuffer &&
 			*reinterpret_cast<uint32_t *>(bytes + 0x550) == 4 &&
 			*reinterpret_cast<uint32_t *>(bytes + 0x590) == reg) {
 			const auto rate = *reinterpret_cast<uint32_t *>(bytes + 0x128);
@@ -19805,7 +19806,7 @@ void XE::wrapTGLPortWriteReg(void *port, uint32_t reg, uint32_t value) {
 				record[3] = value;
 				record[4] = symbols;
 				record[5] = *reinterpret_cast<uint32_t *>(bytes + 0x124);
-				record[6] = mapping.ddi;
+				record[6] = typeCPort.ddi;
 				observed = true;
 			}
 		}
@@ -19924,8 +19925,8 @@ uint32_t XE::wrapTGLEnablePort(void *port) {
         s->adlsWiring.boundSST(s->tglPlatformCopy,config) :
         TGLComboDP::bound(s->tglComboDPMask,s->tglPlatformCopy,config));
     if(fixedDP && s->tglComboAUXOwners[id]!=port) {
-        tglTrace(21,id,true,kIOReturnNotReady,0,kIOReturnNotReady,0);
-        return kIOReturnNotReady;
+        tglTrace(21,id,true,uint32_t(kIOReturnNotReady),0,uint32_t(kIOReturnNotReady),0);
+        return uint32_t(kIOReturnNotReady);
     }
 	const auto original = FunctionCast(wrapTGLEnablePort, callbackXE->orgTGLEnablePort)(port);
 	if(original)tglComboAUXReference(port,false); // only releases if buffer stayed off

@@ -70,15 +70,15 @@ struct Display13OutputWiring {
         auto p=static_cast<uint8_t *>(platform);if(p[0x12]!=Ports)return false;
         for(unsigned d=0;d<Ports;++d)if((hdmi|internal()|(dp&0x78))&(1U<<d)) {
             const auto c=reinterpret_cast<const uint32_t *>(p+0x20+24*d);
-            const uint32_t panel[]={0,0,0,0,2,0x18};
-            if(!d && !memcmp(c,panel,24))continue;
+            const uint32_t panelConfig[]={0,0,0,0,2,0x18};
+            if(!d && !memcmp(c,panelConfig,24))continue;
             if(c[0]!=d || c[1]!=(d<3?d+1:d+6) || c[2]!=1 || c[3]!=(d<3?0U:1U) ||
                 c[4]!=0x400 || c[5]!=0x201)return false;
         }
         for(unsigned d=0;d<Ports;++d)if(hdmi&(1U<<d)) {
             auto c=reinterpret_cast<uint32_t *>(p+0x20+24*d);
-            const bool panel=!d && !c[2];
-            c[1]=ddc[d];c[2]=2;c[4]=0x800;c[5]=panel?0x202:(c[5]&~9U)|2U;
+            const bool isPanel=!d && !c[2];
+            c[1]=ddc[d];c[2]=2;c[4]=0x800;c[5]=isPanel?0x202:(c[5]&~9U)|2U;
         }
         if(!TGLComboDP::apply(dp&3,platform,bytes))return false;
         for(unsigned d=0;d<2;++d)if(internal()&(1U<<d)) {

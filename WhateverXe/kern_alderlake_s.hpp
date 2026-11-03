@@ -115,9 +115,9 @@ struct Wiring {
         // Check every selected predecessor before mutating any record.
         for(unsigned d=0;d<XELP::PortCount;++d)if(selected()&(1U<<d)) {
             const uint32_t expected[]={d,d>=3?d+6:d+1,1,d>=3?1U:0U,0x400,0x201};
-            const uint32_t panel[]={0,0,0,0,2,0x18};
+            const uint32_t panelConfig[]={0,0,0,0,2,0x18};
             if(memcmp(p+0x20+24*d,expected,sizeof(expected)) &&
-               (d || memcmp(p+0x20,panel,sizeof(panel))))return false;
+               (d || memcmp(p+0x20,panelConfig,sizeof(panelConfig))))return false;
         }
         for(unsigned d=0;d<XELP::PortCount;++d)if(selected()&(1U<<d)) {
             auto c=reinterpret_cast<uint32_t *>(p+0x20+24*d);

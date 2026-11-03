@@ -57,7 +57,7 @@ template<class IO> void captureBoot(IO &io,const AlderLakeN::DisplayReadout &nor
     r={};if(!admitted || !profile.valid())return;
     r.status=BootStatus::Memory;
     if(!memory.valid || !memory.reservationKnown || !memory.bytes || memory.bytes%4096 ||
-       memory.bytes>XELPMemory::Aperture || memory.bytes>memory.apertureBytes || !io.readable(0x800000+8*(memory.bytes/4096)-1))return;
+       memory.bytes>XELPMemory::Aperture || memory.bytes>memory.apertureBytes || !io.readable(uint32_t(0x800000+8*(memory.bytes/4096)-1)))return;
     r.memory=memory;r.poweredPipes=normal.poweredPipes;r.status=BootStatus::Peers;
     if(normal.status!=AlderLakeN::ReadoutStatus::Complete || normal.activePipes ||
        !bootPeers(io,r.poweredPipes))return;

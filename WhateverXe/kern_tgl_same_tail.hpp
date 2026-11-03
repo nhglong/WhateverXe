@@ -18,7 +18,7 @@ struct State {
 // This deliberately does not implement Linux's broader rewind/WA-tail policy.
 template<class Read,class Force>
 void prepare(State &s,uint64_t owner,uint64_t streamer,uint64_t generation,Read read,Force force) {
- ++s.counts[1];Entry e{owner,streamer,generation};
+ ++s.counts[1];Entry e{owner,streamer,generation,0,0,0,0,0};
  auto field=[&](uint64_t p,unsigned off,void *out,unsigned n) {
   return p && p+off+n>=p && read(p+off,out,n)==n;
  };

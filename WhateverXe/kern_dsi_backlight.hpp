@@ -16,7 +16,7 @@ struct Backlight {
            ctl==UINT32_MAX || !(ctl&(1U<<31)) || !period || period==UINT32_MAX || duty>period)return false;
         pwm={period,ctl&(1U<<29)};control=ctl;
         const auto vbtMin=p.minimum>64?64:p.minimum;
-        minimum=uint32_t((uint64_t(period)*vbtMin+127)/255);
+        minimum=uint32_t((uint64_t(period)*uint32_t(vbtMin)+127)/255);
         applied=duty;requested=uint32_t((uint64_t(duty)*Maximum+period/2)/period);
         initialized=true;return true;
     }

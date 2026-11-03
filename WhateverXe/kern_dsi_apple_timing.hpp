@@ -91,10 +91,10 @@ inline bool makePanelEDID(const Mode &m,uint8_t (&edid)[128],unsigned block=1) {
         edid[3]=0;edid[4]=0; // EDID extension, no further DisplayID sections
         edid[5]=3;edid[6]=0;edid[7]=20;
         auto d=edid+8;const uint32_t encodedClock=clock-1;
-        d[0]=encodedClock;d[1]=encodedClock>>8;d[2]=encodedClock>>16;d[3]=0x80;
+        d[0]=uint8_t(encodedClock);d[1]=uint8_t(encodedClock>>8);d[2]=uint8_t(encodedClock>>16);d[3]=0x80;
         const uint16_t fields[]={m.width,m.hblank,m.hfront,m.hsync,m.height,m.vblank,m.vfront,m.vsync};
         for(unsigned i=0;i<8;++i) {
-            const auto value=uint16_t(fields[i]-1);d[4+2*i]=value;d[5+2*i]=value>>8;
+            const auto value=uint16_t(fields[i]-1);d[4+2*i]=uint8_t(value);d[5+2*i]=uint8_t(value>>8);
         }
         uint8_t section=0;for(unsigned i=1;i<28;++i)section+=edid[i];edid[28]=uint8_t(0-section);
         uint8_t sum=0;for(unsigned i=0;i<127;++i)sum+=edid[i];edid[127]=uint8_t(0-sum);
@@ -116,12 +116,12 @@ inline bool makePanelEDID(const Mode &m,uint8_t (&edid)[128],unsigned block=1) {
         d[3]=0x10; // unused base descriptor; exact timing is in extension 1
         edid[126]=1;
     } else {
-        d[0]=clock;d[1]=clock>>8;
-        d[2]=m.width;d[3]=m.hblank;d[4]=((m.width>>8)<<4)|(m.hblank>>8);
-        d[5]=m.height;d[6]=m.vblank;d[7]=((m.height>>8)<<4)|(m.vblank>>8);
-        d[8]=m.hfront;d[9]=m.hsync;d[10]=((m.vfront&15)<<4)|(m.vsync&15);
-        d[11]=((m.hfront>>8)<<6)|((m.hsync>>8)<<4)|((m.vfront>>4)<<2)|(m.vsync>>4);
-        d[12]=m.widthMM;d[13]=m.heightMM;d[14]=((m.widthMM>>8)<<4)|(m.heightMM>>8);
+        d[0]=uint8_t(clock);d[1]=uint8_t(clock>>8);
+        d[2]=uint8_t(m.width);d[3]=uint8_t(m.hblank);d[4]=uint8_t(((m.width>>8)<<4)|(m.hblank>>8));
+        d[5]=uint8_t(m.height);d[6]=uint8_t(m.vblank);d[7]=uint8_t(((m.height>>8)<<4)|(m.vblank>>8));
+        d[8]=uint8_t(m.hfront);d[9]=uint8_t(m.hsync);d[10]=uint8_t(((m.vfront&15)<<4)|(m.vsync&15));
+        d[11]=uint8_t(((m.hfront>>8)<<6)|((m.hsync>>8)<<4)|((m.vfront>>4)<<2)|(m.vsync>>4));
+        d[12]=uint8_t(m.widthMM);d[13]=uint8_t(m.heightMM);d[14]=uint8_t(((m.widthMM>>8)<<4)|(m.heightMM>>8));
         d[17]=0x18; // separate negative sync, matching the fixed Apple timing
     }
     edid[75]=0xFC;memcpy(edid+77,"MIPI DSI\n    ",13);

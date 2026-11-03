@@ -188,7 +188,7 @@ template<class Reader> struct Walker {
  void candidate(unsigned index,const TGLHangPending::Entry &entry) {
   c.q[0]=1;provenance=1;memset(c.state,0,sizeof(c.state));
   if(!entry.stable || entry.dwords>4096 || !entry.dwords || entry.copied!=entry.dwords*4){c.q[5]|=ReadHole;return;}
-  unsigned walked=0;c.q[5]|=walk(index,entry.gpu,entry.bytes,entry.copied,0,walked);
+  unsigned walked=0;c.q[5]|=walk(index,entry.gpu,entry.bytes,unsigned(entry.copied),0,walked);
  }
  void mappedCandidate(unsigned index,uint64_t gpu) {
   c.q[0]=1;provenance=1;memset(c.state,0,sizeof(c.state));

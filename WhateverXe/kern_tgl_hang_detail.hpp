@@ -170,7 +170,7 @@ void collect(Capture &c,const TGLHangPending::Capture &pending,const uint8_t *re
   if(!e.stable || !e.dwords || e.dwords>4096 || e.copied!=e.dwords*4 || !e.gpu ||
      e.gpu>>47 || e.copied>(1ULL<<47)-e.gpu || !kernelRange(e.cpu,e.copied))continue;
   q[7]=2;if(!cacheMatches(c.q[4],e,read))continue;
-  q[7]=16;if(read(e.cpu,c.scratch,e.copied)!=e.copied || memcmp(c.scratch,e.bytes,e.copied))continue;
+  q[7]=16;if(read(e.cpu,c.scratch,unsigned(e.copied))!=e.copied || memcmp(c.scratch,e.bytes,e.copied))continue;
   q[7]=0;
   for(unsigned o=0;o<e.copied;) {
    const uint64_t gpu=e.gpu+o;auto page=walker.page(gpu,TGLHangGraph::Command);

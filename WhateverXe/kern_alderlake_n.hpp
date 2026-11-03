@@ -543,7 +543,7 @@ template<class IO> GGTTLease leaseGOPGGTT(IO &io, const DisplayReadout &r,
     if(p.geometry.width!=1920 || p.geometry.height!=1080 || p.geometry.pitch!=7680)return out;
     out.gopEnd=uint64_t(p.surface)+p.geometry.bytes;
     if(out.gopEnd>ScanoutSlot || !memory.range(ScanoutSlot,2*ScanoutBytes,true) ||
-       !io.readable(0x800000+(memory.bytes/4096)*8-1))return out;
+       !io.readable(uint32_t(0x800000+(memory.bytes/4096)*8-1)))return out;
     const uint64_t base=memory.base;
     out.stolenBase=base;out.status=3;
     for(uint32_t i=0;i<memory.bytes/4096;++i) {

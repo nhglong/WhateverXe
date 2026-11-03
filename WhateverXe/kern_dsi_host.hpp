@@ -42,9 +42,9 @@ struct Host {
             if(!ready(io))return false;
             uint32_t status=0;
             if(!io.credits(status) || status==UINT32_MAX)return fail(HostError::Unavailable);
-            const auto headers=(status>>8)&31,payload=status&255;
-            if(headers>16 || payload>64)return fail(HostError::Unavailable);
-            if(headers>=h && payload>=p)return true;
+            const auto headerCredits=(status>>8)&31,payloadCredits=status&255;
+            if(headerCredits>16 || payloadCredits>64)return fail(HostError::Unavailable);
+            if(headerCredits>=h && payloadCredits>=p)return true;
             if(us==budgetUs)return fail(HostError::CreditTimeout);
             io.delayUs(10);waitedUs+=10;
         }

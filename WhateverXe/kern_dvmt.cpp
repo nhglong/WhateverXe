@@ -138,8 +138,8 @@ void DVMTCalcFix::processFramebufferKext(KernelPatcher &patcher, size_t index, m
 	// As such, we need to first figure out which register is of interest, and
 	// we need 5 or 6 bytes to move a 32-bit integer to the register manipulated by the above instructions.
 	// Since `andl` is 5 - 7 bytes long, we could just replace it with a "movl" and then erases `shll` by filling `nop`s.
-	for (auto index = 0; index < 64; index += 1) {
-		auto size = Disassembler::hdeDisasm(startAddress, &handle);
+	for (auto instructionIndex = 0; instructionIndex < 64; instructionIndex += 1) {
+		auto instructionSize = Disassembler::hdeDisasm(startAddress, &handle);
 		
 		// Guard: Should be able to disassemble the function
 		if (handle.flags & F_ERROR) {
@@ -152,7 +152,7 @@ void DVMTCalcFix::processFramebufferKext(KernelPatcher &patcher, size_t index, m
 		if (handle.opcode == 0xC1 && handle.imm.imm8 == 0x11) {
 			shllAddr = startAddress;
 			shllSize = handle.len;
-			shllDstr = (handle.rex_b << 3) | handle.modrm_rm;
+			shllDstr = (uint32_t(handle.rex_b) << 3) | handle.modrm_rm;
 			SYSLOG("igfx", "DVMT: Found the shll instruction. Length = %d; DSTReg = %d.", shllSize, shllDstr);
 		}
 		
@@ -161,7 +161,7 @@ void DVMTCalcFix::processFramebufferKext(KernelPatcher &patcher, size_t index, m
 		if ((handle.opcode == 0x25 || handle.opcode == 0x81) && handle.imm.imm32 == 0xFE000000) {
 			andlAddr = startAddress;
 			andlSize = handle.len;
-			andlDstr = (handle.rex_b << 3) | handle.modrm_rm;
+			andlDstr = (uint32_t(handle.rex_b) << 3) | handle.modrm_rm;
 			SYSLOG("igfx", "DVMT: Found the andl instruction. Length = %d; DSTReg = %d.", andlSize, andlDstr);
 		}
 		
@@ -208,7 +208,7 @@ void DVMTCalcFix::processFramebufferKext(KernelPatcher &patcher, size_t index, m
 			return;
 		}
 		
-		startAddress += size;
+		startAddress += instructionSize;
 	}
 	
 	SYSLOG("igfx", "DVMT: Failed to find instructions of interest. Aborted patching.");

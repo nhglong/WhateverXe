@@ -27,13 +27,13 @@ uint32_t XE::wrapDSIBackingAllocate(OSObject *pipe,void *record,uint32_t flags) 
     if(!__atomic_load_n(&o.framebuffer,__ATOMIC_ACQUIRE))
         return FunctionCast(wrapDSIBackingAllocate,callbackXE->orgDSIBacking[0])(pipe,record,flags);
     if(__atomic_load_n(&o.thread,__ATOMIC_ACQUIRE)!=reinterpret_cast<uintptr_t>(current_thread()) || record!=o.record) {
-        if(pipe && pipe==__atomic_load_n(&o.pipe,__ATOMIC_ACQUIRE))return kIOReturnNotReady;
+        if(pipe && pipe==__atomic_load_n(&o.pipe,__ATOMIC_ACQUIRE))return uint32_t(kIOReturnNotReady);
         return FunctionCast(wrapDSIBackingAllocate,callbackXE->orgDSIBacking[0])(pipe,record,flags);
     }
     if(!o.allocating || flags || o.pipe || !pipe || !pipe->metaCast("IGAccelDisplayPipe") ||
        pipe->getMetaClass()->getClassSize()<0x12B0 || Display13FBMemory::field<IOService *>(pipe,0x88)!=o.accelerator ||
        Display13FBMemory::field<uintptr_t>(pipe,0x1298) || Display13FBMemory::field<uintptr_t>(pipe,0x12A0) ||
-       Display13FBMemory::field<uintptr_t>(pipe,0x12A8))return kIOReturnNotReady;
+       Display13FBMemory::field<uintptr_t>(pipe,0x12A8))return uint32_t(kIOReturnNotReady);
     pipe->retain();__atomic_store_n(&o.pipe,pipe,__ATOMIC_RELEASE);
     const auto result=FunctionCast(wrapDSIBackingAllocate,callbackXE->orgDSIBacking[0])(pipe,record,flags);
     o.nativeResult=result;const auto &r=*o.record;
@@ -49,7 +49,7 @@ uint32_t XE::wrapDSIBackingAllocate(OSObject *pipe,void *record,uint32_t flags) 
     }
     return o.allocated && callbackXE->validateDSINativeBacking() &&
         callbackXE->initializeDSINativeBacking() && callbackXE->switchDSINativeSurface() &&
-        callbackXE->publishDSINativeBacking() ? result : kIOReturnNotReady;
+        callbackXE->publishDSINativeBacking() ? result : uint32_t(kIOReturnNotReady);
 }
 
 uint32_t XE::wrapDSIBackingFree(OSObject *pipe,void *record,uint32_t flags) {
@@ -57,19 +57,19 @@ uint32_t XE::wrapDSIBackingFree(OSObject *pipe,void *record,uint32_t flags) {
     if(!__atomic_load_n(&o.framebuffer,__ATOMIC_ACQUIRE))
         return FunctionCast(wrapDSIBackingFree,callbackXE->orgDSIBacking[1])(pipe,record,flags);
     if(__atomic_load_n(&o.thread,__ATOMIC_ACQUIRE)!=reinterpret_cast<uintptr_t>(current_thread()) || record!=o.record) {
-        if(pipe && pipe==__atomic_load_n(&o.pipe,__ATOMIC_ACQUIRE))return kIOReturnNotReady;
+        if(pipe && pipe==__atomic_load_n(&o.pipe,__ATOMIC_ACQUIRE))return uint32_t(kIOReturnNotReady);
         return FunctionCast(wrapDSIBackingFree,callbackXE->orgDSIBacking[1])(pipe,record,flags);
     }
     if(!o.freeing || flags || o.armed || !pipe || pipe!=o.pipe ||
-       Display13FBMemory::field<IOService *>(pipe,0x88)!=o.accelerator)return kIOReturnNotReady;
+       Display13FBMemory::field<IOService *>(pipe,0x88)!=o.accelerator)return uint32_t(kIOReturnNotReady);
     const auto &r=*o.record;
     if(r.refs>1 || Display13FBMemory::field<uintptr_t>(pipe,0x1298)!=r.memory ||
        Display13FBMemory::field<uintptr_t>(pipe,0x12A0)!=r.map || Display13FBMemory::field<uintptr_t>(pipe,0x12A8) ||
-       (!r.refs && (r.map || r.memory || r.gpu || r.pitch)))return kIOReturnNotReady;
+       (!r.refs && (r.map || r.memory || r.gpu || r.pitch)))return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSIBackingFree,callbackXE->orgDSIBacking[1])(pipe,record,flags);
     o.nativeResult=result;o.freed=!result && !r.refs && !r.map && !r.memory && !r.gpu && !r.pitch &&
         !Display13FBMemory::field<uintptr_t>(pipe,0x1298) && !Display13FBMemory::field<uintptr_t>(pipe,0x12A0);
-    return o.freed ? result : kIOReturnNotReady;
+    return o.freed ? result : uint32_t(kIOReturnNotReady);
 }
 
 bool XE::prepareDSINativeBacking(IOService *fb) {
@@ -365,7 +365,7 @@ bool XE::publishDSINativeBacking() {
         receipt[5]=Display13FBMemory::field<uint8_t>(controller,0xDF4);
         receipt[6]=Display13FBMemory::field<uint32_t>(controller,0xDF0);
         receipt[7]=Display13FBMemory::field<uint8_t>(fb,0x4288);
-        ready=Display13FBMemory::slotReturned(count,0,used,mask,receipt[5],receipt[6],receipt[7]) &&
+        ready=Display13FBMemory::slotReturned(count,0,used,mask,unsigned(receipt[5]),uint32_t(receipt[6]),unsigned(receipt[7])) &&
             Display13FBMemory::poolReturned(pool,Display13FBMemory::pool(controller),0) &&
             !Display13FBMemory::field<void *>(fb,0x4348) && !c.memoryFaulted &&
             Display13FBMemory::field<uint32_t>(fb,0x4334)==o.proof.pitch;
@@ -412,7 +412,7 @@ bool XE::publishDSINativeMode(IOService *fb) {
     IORegistryEntry::getRegistryRoot()->setProperty("WEXDSIPublicMode",receipt,sizeof(receipt));
     if(!receipt[2] || !receipt[3])return false;
     uint32_t tile=2;
-    receipt[2]=o.accelerator->callPlatformFunction("EFITilingMode",true,&tile,nullptr,nullptr,nullptr);
+    receipt[2]=uint64_t(o.accelerator->callPlatformFunction("EFITilingMode",true,&tile,nullptr,nullptr,nullptr));
     if(!receipt[2]) {
         *reinterpret_cast<uint8_t *>(reinterpret_cast<uint8_t *>(controller)+0xE53)=0;
         *reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(fb)+0x4250)=XELP::DSI::AppleAdapter::FixedModeID;

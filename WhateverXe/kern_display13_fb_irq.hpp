@@ -97,7 +97,8 @@ inline uint32_t nativeDPAlt(uint32_t pending,uint32_t control) {
     uint32_t r=0;for(unsigned tc=0;tc<4;++tc)if(pending&(1U<<(16+tc))) {
         if(control&(2U<<(4*tc)))r|=1U<<(2*tc);
         if(control&(1U<<(4*tc)))r|=2U<<(2*tc);
-    }return r;
+    }
+    return r;
 }
 // Linux GEN11_DE_HPD: TC1..6 at bits16..21, TBT1..6 at bits0..5.
 // Apply the same connector exclusion to both PCH and north HPD banks.
@@ -231,7 +232,7 @@ template<class IO> Status enable(IO &io,State &s,uint32_t excludedPCH=0,uint32_t
             if(value==UINT32_MAX)return fail(io,s,Status::Readback);
             if(!s.begun)s.priorDSB[p][dsb]=value&0xF0000;
             // Enable Gen12/13 program/error statuses, never MTL ATS bit20.
-            io.write(reg,(value&~0xF)|0xF0000);
+            io.write(reg,(value&~0xFU)|0xF0000);
         }
     }
     const auto ddi=io.read(DDIControl);
@@ -538,7 +539,7 @@ template<class IO> Events collect(IO &io,State &s) {
         for(unsigned dsb=0;dsb<3;++dsb)if(raw&(1U<<(13+dsb))) {
             const auto reg=DSBInterrupt(p,dsb),value=io.read(reg),errors=value&0xE;
             if(value==UINT32_MAX) {e.status=fail(io,s,Status::Readback);return e;}
-            if(errors) {++s.dsbErrors[p];e.pipe|=1U<<(6+p);io.write(reg,(value&~0xF)|errors);}
+            if(errors) {++s.dsbErrors[p];e.pipe|=1U<<(6+p);io.write(reg,(value&~0xFU)|errors);}
             // Program status bit0 stays for the native completion handler,
             // which clears the real path's DSB busy flag and then W1C status.
         }

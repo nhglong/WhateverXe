@@ -164,10 +164,10 @@ uint32_t XE::wrapDSIBootProbe(IOService *controller,bool *builtin,uint32_t *ddi)
 uint32_t XE::setDSIPortMode(OSObject *port,uint32_t wanted) {
     auto self=callbackXE;auto &c=display13FBPower;
     if(!self->display13FBTCHooksReady || !self->display13TCBaseMode || !c.lock ||
-       !port || port->getMetaClass()->getClassSize()<0x6B0)return kIOReturnNotReady;
+       !port || port->getMetaClass()->getClassSize()<0x6B0)return uint32_t(kIOReturnNotReady);
     // Mode zero must be connected to an actual DSI stop/cleanup transaction.
     // Reject it for now, including when the native caller asks only for reset.
-    if(wanted!=1)return kIOReturnUnsupported;
+    if(wanted!=1)return uint32_t(kIOReturnUnsupported);
     IOLockLock(c.lock);
     auto config=Display13FBMemory::field<uint32_t *>(port,0x548);
     const auto previous=Display13FBMemory::field<uint32_t>(port,0x550);
@@ -182,12 +182,12 @@ uint32_t XE::setDSIPortMode(OSObject *port,uint32_t wanted) {
         !c.memoryFaulted && !c.clockFaulted && !c.bridge.state.faulted;
     Display13FBBootIO io{c.map};
     const bool ready=bound && c.bridge.outputHeld(io,0,0) && XELP::DSI::sourceUnchanged(io,c.bootDSI);
-    uint32_t result=kIOReturnNotReady;
+    uint32_t result=uint32_t(kIOReturnNotReady);
     if(ready) {
         // Exact donor base setPortMode(1) only records port+0x550. The HAL
         // setter and mode0's reset callback must never run on this path.
         result=reinterpret_cast<uint32_t (*)(OSObject *,uint32_t)>(self->display13TCBaseMode)(port,1);
-        if(result==kIOReturnSuccess && Display13FBMemory::field<uint32_t>(port,0x550)!=1)result=kIOReturnNotReady;
+        if(result==kIOReturnSuccess && Display13FBMemory::field<uint32_t>(port,0x550)!=1)result=uint32_t(kIOReturnNotReady);
         if(result==kIOReturnSuccess && !c.dsiPort){port->retain();c.dsiPort=port;}
     }
     IOLockUnlock(c.lock);return result;

@@ -325,7 +325,7 @@ template<class IO> Status resumeProof(IO &io,State &s,unsigned index) {
     if(s.faulted)return Status::Faulted;
     if(!s.begun || index>=3 || !(s.selected&(1U<<index)))return Status::Unavailable;
     if(s.updating&(1U<<index))return fail(s,Status::Conflict);
-    auto &a=s.pipe[index];const auto bank=0x1000*index;
+    auto &a=s.pipe[index];
     if(!Display13FBIRQ::powered(io.read(0x45404),index))return fail(s,Status::Power);
     if(!valid(a.primary) || (a.cursor.end && !valid(a.cursor)) || overlap(a.primary,a.cursor) ||
        overlapsOther(s,index,a.primary) || overlapsOther(s,index,a.cursor))return fail(s,Status::Range);
@@ -452,7 +452,7 @@ template<class IO> Status stop(IO &io,State &s) {
 template<class IO> Status preparePrimary(IO &io,State &s,uint32_t start,uint32_t end,unsigned index=0) {
     if(s.faulted)return Status::Faulted;
     if(!s.begun || index>=3 || !(s.selected&(1U<<index)))return Status::Unavailable;
-    const auto bit=1U<<index,bank=0x1000*index;auto &a=s.pipe[index];
+    const auto bit=1U<<index;auto &a=s.pipe[index];
     if(s.updating&bit)return fail(s,Status::Conflict);
     if(!Display13FBIRQ::powered(io.read(0x45404),index))return fail(s,Status::Power);
     const Range next {start,end+1};
@@ -468,7 +468,7 @@ template<class IO> Status preparePrimary(IO &io,State &s,uint32_t start,uint32_t
 template<class IO> Status finishPrimary(IO &io,State &s,unsigned index=0) {
     if(s.faulted)return Status::Faulted;
     if(index>=3 || !(s.selected&(1U<<index)))return Status::Unavailable;
-    const auto bit=1U<<index,bank=0x1000*index;auto &a=s.pipe[index];
+    const auto bit=1U<<index;auto &a=s.pipe[index];
     if(!(s.updating&bit) || a.pendingCursor)return fail(s,Status::Conflict);
     if(!Display13FBIRQ::powered(io.read(0x45404),index) || io.read(0x4438C)!=s.mbus)return fail(s,Status::Power);
     if(!hardwareMatches(io,s,index,decode(a.pendingRaw),a.cursor))return fail(s,Status::Readback);
@@ -500,7 +500,7 @@ template<class IO> Status prepareCursor(IO &io,State &s,unsigned index=0) {
 template<class IO> Status finishCursor(IO &io,State &s,unsigned index=0) {
     if(s.faulted)return Status::Faulted;
     if(index>=3 || !(s.selected&(1U<<index)))return Status::Unavailable;
-    const auto bit=1U<<index,bank=0x1000*index;auto &a=s.pipe[index];
+    const auto bit=1U<<index;auto &a=s.pipe[index];
     if(!(s.updating&bit) || !a.pendingCursor)return fail(s,Status::Conflict);
     if(!Display13FBIRQ::powered(io.read(0x45404),index) || io.read(0x4438C)!=s.mbus)return fail(s,Status::Power);
     if(!hardwareMatches(io,s,index,a.primary,decode(a.pendingRaw)))return fail(s,Status::Readback);

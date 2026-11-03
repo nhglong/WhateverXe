@@ -54,13 +54,13 @@ void XE::endDSINativeWriter(int token) {
 }
 
 uint32_t XE::wrapDSICursorImage(IOService *controller,IOService *fb,void *info) {
-    const int token=beginDSINativeWriter(controller,fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSINativeWriter(controller,fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSICursorImage,callbackXE->orgDSICursor[0])(controller,fb,info);
     endDSINativeWriter(token);return result;
 }
 
 uint32_t XE::wrapDSICursorState(IOService *controller,IOService *fb,int32_t x,int32_t y,bool visible,bool commit) {
-    const int token=beginDSINativeWriter(controller,fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSINativeWriter(controller,fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSICursorState,callbackXE->orgDSICursor[1])(controller,fb,x,y,visible,commit);
     endDSINativeWriter(token);return result;
 }
@@ -74,31 +74,31 @@ int XE::beginDSIFramebufferWriter(IOService *fb) {
 }
 
 uint32_t XE::wrapDSIFlipTransaction(IOService *fb,void *transaction,uint64_t options,void *params) {
-    const int token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSIFlipTransaction,callbackXE->orgDSITransaction[0])(fb,transaction,options,params);
     endDSINativeWriter(token);return result;
 }
 
 uint32_t XE::wrapDSIGammaTransaction(IOService *fb,void *transaction,void *params) {
-    const int token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSIGammaTransaction,callbackXE->orgDSITransaction[1])(fb,transaction,params);
     endDSINativeWriter(token);return result;
 }
 
 uint32_t XE::wrapDSICscTransaction(IOService *fb,void *transaction,void *matrix,uint64_t options,bool final) {
-    const int token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSICscTransaction,callbackXE->orgDSITransaction[2])(fb,transaction,matrix,options,final);
     endDSINativeWriter(token);return result;
 }
 
 uint32_t XE::wrapDSIPlaneGammaTransaction(IOService *fb,void *transaction,bool post) {
-    const int token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSIPlaneGammaTransaction,callbackXE->orgDSITransaction[3])(fb,transaction,post);
     endDSINativeWriter(token);return result;
 }
 
 uint32_t XE::wrapDSISetGammaTable(IOService *fb,uint32_t channels,uint32_t count,uint32_t bits,void *data,bool sync) {
-    const int token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+    const int token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
     const auto result=FunctionCast(wrapDSISetGammaTable,callbackXE->orgDSITransaction[4])(fb,channels,count,bits,data,sync);
     endDSINativeWriter(token);return result;
 }
@@ -111,16 +111,16 @@ uint32_t XE::wrapDSISetAttribute(IOService *fb,uint32_t attribute,uintptr_t valu
     const auto result=[&]() -> uint32_t {
         int token=0;
         if(callbackXE->adlnOutputWiring.dsi) {
-            if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return kIOReturnNotReady;
-            DSIModeScope scope(fb);if(!scope.lock)return kIOReturnNotReady;
+            if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return uint32_t(kIOReturnNotReady);
+            DSIModeScope scope(fb);if(!scope.lock)return uint32_t(kIOReturnNotReady);
             if(dsiLifecycleTarget(fb,Display13FBMemory::singlePath<OSObject *>(fb))) {
                 if(attribute==0x706F7772 || attribute==0x70777273) { // powr / IOGraphics pwrs relay.
-                    if(value>UINT32_MAX)return kIOReturnUnsupported;
+                    if(value>UINT32_MAX)return uint32_t(kIOReturnUnsupported);
                     return wrapDSISetPowerState(fb,static_cast<uint32_t>(value));
                 }
                 if(attribute==0x626B7376)return callbackXE->saveDSIBrightness(fb,value);
-                if(XELP::DSI::AppleAdapter::transportAttribute(attribute))return kIOReturnUnsupported;
-                token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+                if(XELP::DSI::AppleAdapter::transportAttribute(attribute))return uint32_t(kIOReturnUnsupported);
+                token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
             }
         }
         const auto result=FunctionCast(wrapDSISetAttribute,callbackXE->orgDSIAttributes[0])(fb,attribute,value);
@@ -164,21 +164,21 @@ void XE::publishDSIBacklight() {
 // This is user preference bookkeeping, not a hardware brightness command.
 uint32_t XE::saveDSIBrightness(IOService *fb,uintptr_t value) {
     auto &c=display13FBPower;
-    if(value>UINT32_MAX)return kIOReturnBadArgument;
-    if(!c.lock || !dsiModeTarget(fb))return kIOReturnNotReady;
+    if(value>UINT32_MAX)return uint32_t(kIOReturnBadArgument);
+    if(!c.lock || !dsiModeTarget(fb))return uint32_t(kIOReturnNotReady);
     IOLockLock(c.lock);
     const bool owned=dsiResourcesReady && c.controller && c.controller==adlnTopologyController &&
         Display13FBMemory::field<IOService *>(fb,0x1D0)==c.controller && c.pipe[0].memoryFramebuffer==fb;
     if(owned)*reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(c.controller)+0xE5C)=static_cast<uint32_t>(value);
-    IOLockUnlock(c.lock);return owned?kIOReturnSuccess:kIOReturnNotReady;
+    IOLockUnlock(c.lock);return owned?kIOReturnSuccess:uint32_t(kIOReturnNotReady);
 }
 
 // The caller holds the same framebuffer mutex as stop/resume. Deferred requests
 // update only software; the panel-on sequence applies PWM before its enable GPIO.
 uint32_t XE::setDSIBrightness(IOService *fb,uintptr_t value) {
     auto &c=display13FBPower;
-    if(value>XELP::DSI::Backlight::Maximum)return kIOReturnBadArgument;
-    if(!c.lock || !dsiModeTarget(fb))return kIOReturnNotReady;
+    if(value>XELP::DSI::Backlight::Maximum)return uint32_t(kIOReturnBadArgument);
+    if(!c.lock || !dsiModeTarget(fb))return uint32_t(kIOReturnNotReady);
     const bool awake=dsiNativeUpdateAllowed(fb);
     IOLockLock(c.lock);
     const bool owned=dsiResourcesReady && dsiBacklight.initialized && !dsiRuntimePower.failed &&
@@ -202,7 +202,7 @@ uint32_t XE::setDSIBrightness(IOService *fb,uintptr_t value) {
     // The donor getter returns this 16-bit requested value with range 0..65535.
     if(complete)*reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(c.controller)+0xE58)=dsiBacklight.requested;
     IOLockUnlock(c.lock);publishDSIBacklight();
-    return complete?kIOReturnSuccess:kIOReturnNotReady;
+    return complete?kIOReturnSuccess:uint32_t(kIOReturnNotReady);
 }
 
 uint32_t XE::wrapDSISetConnectionAttribute(IOService *fb,int32_t connection,uint32_t attribute,uintptr_t value) {
@@ -210,13 +210,13 @@ uint32_t XE::wrapDSISetConnectionAttribute(IOService *fb,int32_t connection,uint
     const auto result=[&]() -> uint32_t {
         int token=0;
         if(callbackXE->adlnOutputWiring.dsi) {
-            if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return kIOReturnNotReady;
-            DSIModeScope scope(fb);if(!scope.lock)return kIOReturnNotReady;
+            if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return uint32_t(kIOReturnNotReady);
+            DSIModeScope scope(fb);if(!scope.lock)return uint32_t(kIOReturnNotReady);
             if(dsiLifecycleTarget(fb,Display13FBMemory::singlePath<OSObject *>(fb))) {
-                if(connection!=0)return kIOReturnUnsupported;
+                if(connection!=0)return uint32_t(kIOReturnUnsupported);
                 if(attribute==0x626B6C74)return callbackXE->setDSIBrightness(fb,value);
-                if(XELP::DSI::AppleAdapter::transportConnectionAttribute(attribute))return kIOReturnUnsupported;
-                token=beginDSIFramebufferWriter(fb);if(token<0)return kIOReturnNotReady;
+                if(XELP::DSI::AppleAdapter::transportConnectionAttribute(attribute))return uint32_t(kIOReturnUnsupported);
+                token=beginDSIFramebufferWriter(fb);if(token<0)return uint32_t(kIOReturnNotReady);
             }
         }
         const auto result=FunctionCast(wrapDSISetConnectionAttribute,callbackXE->orgDSIAttributes[1])(fb,connection,attribute,value);
@@ -231,8 +231,8 @@ uint32_t XE::wrapDSISetPowerState(IOService *fb,uint32_t state) {
     recordDSIClient(fb,9,state,UINT32_MAX);
     const auto result=[&]() -> uint32_t {
         if(callbackXE->adlnOutputWiring.dsi) {
-            if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return kIOReturnNotReady;
-            DSIModeScope scope(fb);if(!scope.lock)return kIOReturnNotReady;
+            if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return uint32_t(kIOReturnNotReady);
+            DSIModeScope scope(fb);if(!scope.lock)return uint32_t(kIOReturnNotReady);
             if(dsiLifecycleTarget(fb,Display13FBMemory::singlePath<OSObject *>(fb))) {
                 if(callbackXE->dsiPowerTest && state<=2 && dsiModeTarget(fb)) {
                     auto controller=Display13FBMemory::field<IOService *>(fb,0x1D0);
@@ -240,7 +240,7 @@ uint32_t XE::wrapDSISetPowerState(IOService *fb,uint32_t state) {
                     auto &power=callbackXE->dsiRuntimePower;
                     const bool ready=!power.failed && (state==2 ? (power.sleeping ? callbackXE->resumeDSIPath(controller,fb,path) : dsiNativeUpdateAllowed(fb)) :
                         (power.sleeping ? true : (dsiNativeUpdateAllowed(fb) && callbackXE->quiesceDSIPath(controller,fb,path,true))));
-                    if(!ready)return kIOReturnNotReady;
+                    if(!ready)return uint32_t(kIOReturnNotReady);
                     *reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(fb)+0x4284)=state;
                     return kIOReturnSuccess;
                 }
@@ -250,17 +250,17 @@ uint32_t XE::wrapDSISetPowerState(IOService *fb,uint32_t state) {
                     const bool stopped=callbackXE->dsiMemoryReleased && callbackXE->dsiDDIReleased &&
                         callbackXE->dsiClockStop.complete() && callbackXE->dsiPanelStop.complete;
                     if(stopped)return kIOReturnSuccess;
-                    if(!callbackXE->dsiNativeWriterHooksReady || !dsiNativeUpdateAllowed(fb))return kIOReturnNotReady;
+                    if(!callbackXE->dsiNativeWriterHooksReady || !dsiNativeUpdateAllowed(fb))return uint32_t(kIOReturnNotReady);
                     auto controller=Display13FBMemory::field<IOService *>(fb,0x1D0);
                     auto path=Display13FBMemory::singlePath<OSObject *>(fb);
-                    if(!callbackXE->quiesceDSIPath(controller,fb,path))return kIOReturnNotReady;
+                    if(!callbackXE->quiesceDSIPath(controller,fb,path))return uint32_t(kIOReturnNotReady);
                     *reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(fb)+0x4284)=state;
                     return kIOReturnSuccess;
                 }
                 // Match only the donor's already-Wake no-op. Do not publish a new
                 // native power state without executing a DSI power transaction.
-                if(state!=2 || Display13FBMemory::field<uint32_t>(fb,0x4284)!=2)return kIOReturnUnsupported;
-                return callbackXE->dsiNativeWriterHooksReady && dsiNativeUpdateAllowed(fb) ? kIOReturnSuccess : kIOReturnNotReady;
+                if(state!=2 || Display13FBMemory::field<uint32_t>(fb,0x4284)!=2)return uint32_t(kIOReturnUnsupported);
+                return callbackXE->dsiNativeWriterHooksReady && dsiNativeUpdateAllowed(fb) ? kIOReturnSuccess : uint32_t(kIOReturnNotReady);
             }
         }
         return FunctionCast(wrapDSISetPowerState,callbackXE->orgDSIAttributes[2])(fb,state);
@@ -271,9 +271,9 @@ uint32_t XE::wrapDSISetPowerState(IOService *fb,uint32_t state) {
 
 uint32_t XE::wrapDSISetStream(IOService *controller,IOService *fb,OSObject *path,const void *timing) {
     if(callbackXE->adlnOutputWiring.dsi) {
-        if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return kIOReturnNotReady;
-        DSIModeScope scope(fb);if(!scope.lock)return kIOReturnNotReady;
-        if(dsiLifecycleTarget(fb,path))return kIOReturnNotReady;
+        if(!fb || fb->getMetaClass()->getClassSize()<0x4B90)return uint32_t(kIOReturnNotReady);
+        DSIModeScope scope(fb);if(!scope.lock)return uint32_t(kIOReturnNotReady);
+        if(dsiLifecycleTarget(fb,path))return uint32_t(kIOReturnNotReady);
     }
     return FunctionCast(wrapDSISetStream,callbackXE->orgDSIAttributes[3])(controller,fb,path,timing);
 }
@@ -650,9 +650,9 @@ bool XE::quiesceDSIPath(IOService *controller,IOService *fb,OSObject *path,bool 
     record[30]=c.bridge.ddiRefs[0];
     if(stopped && c.bridge.bootAdopted && c.bridge.bootPath==reinterpret_cast<uintptr_t>(path) &&
        c.bridge.bootPort==0 && !c.bridge.bootDDIProtected && c.bridge.ddiRefs[0]==1 && c.power) {
-        auto power=c.power;
-        IOLockUnlock(c.lock);const bool put=adlnPowerReference(power,4,0);IOLockLock(c.lock);
-        dsiDDIReleased=put && c.power==power && !c.bridge.ddiRefs[0] && !c.bridge.ddiLease[0].owner;
+        auto retainedPower=c.power;
+        IOLockUnlock(c.lock);const bool put=adlnPowerReference(retainedPower,4,0);IOLockLock(c.lock);
+        dsiDDIReleased=put && c.power==retainedPower && !c.bridge.ddiRefs[0] && !c.bridge.ddiLease[0].owner;
     }
     record[31]=c.bridge.ddiRefs[0];record[32]=dsiDDIReleased;
     const bool stoppedPath=stopped && dsiDDIReleased;
