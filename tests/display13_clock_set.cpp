@@ -59,9 +59,26 @@ int main() {
      auto restarted=set(io,614400000,{true,true,0});assert(restarted.status==ChangeStatus::Complete && restarted.after.nativeHz()==614400000);}
     {IO io;io.unlockTimeout=true;auto r=stop(io,{true,false,0});assert(r.status==ChangeStatus::PllTimeout &&
         r.delayUs==1000 && io.writesTo(Control)==0 && io.writesTo(Data)==1);}
-    {IO io;io.prepareDenied=true;auto r=stop(io,{true,false,0});assert(r.status==ChangeStatus::PrepareTimeout && io.writesTo(PLL)==0);}
+    // Run each firmware fault through both transitions with the same contract.
+    struct Fault {bool IO::*flag;ChangeStatus status;unsigned delay,polls;};
+    const Fault faults[] {
+        {&IO::mailboxError,ChangeStatus::MailboxError,0,0},
+        {&IO::mailboxTimeout,ChangeStatus::MailboxTimeout,500,0},
+        {&IO::concurrentChange,ChangeStatus::ReadbackMismatch,0,0},
+        {&IO::prepareDenied,ChangeStatus::PrepareTimeout,53000,0},
+        {&IO::prepareDenied,ChangeStatus::PrepareTimeout,53000,26}
+    };
+    for(bool stopping : {false,true}) {
+        const auto transition=[&](IO &io) {return stopping?stop(io,{true,false,0}):set(io,614400000,ready);};
+        for(const auto &fault:faults) {
+            IO io;io.*fault.flag=true;io.completionPolls=fault.polls;auto r=transition(io);
+            assert((r.status==fault.status || (fault.polls && r.status==ChangeStatus::MailboxTimeout)) &&
+                   r.delayUs==fault.delay && io.writesTo(PLL)==0 && io.writesTo(Control)==0);
+        }
+        {IO io;io.regs[Mailbox]=0x80000000;auto r=transition(io);assert(r.status==ChangeStatus::MailboxBusy && io.writes.empty());}
+        {IO io;io.regs.erase(Data1);auto r=transition(io);assert(r.status==ChangeStatus::Unavailable && io.writes.empty());}
+    }
     {IO io;io.regs[PLL]=68;auto r=stop(io,{true,false,0});assert(r.status==ChangeStatus::Complete && io.writes.empty());}
-    {IO io;io.regs.erase(Data1);auto r=stop(io,{true,false,0});assert(r.status==ChangeStatus::Unavailable && io.writes.empty());}
     {IO io;io.badControl=true;auto r=stop(io,{true,false,0});assert(r.status==ChangeStatus::ReadbackMismatch && io.writesTo(Data)==1);}
     {IO io;auto r=set(io,1305600000,{false,false,1});assert(r.status==ChangeStatus::Complete && !r.writes && io.writes.empty());}
     {IO io;auto r=set(io,614400000,{false,true,1});assert(r.status==ChangeStatus::OwnershipRequired && io.writes.empty());}
@@ -86,18 +103,9 @@ int main() {
     {IO io;auto r=set(io,345600000,{true,true,0});assert(r.status==ChangeStatus::Complete && r.after.divider==3);}
     {IO io;io.regs[PLL]=0;auto r=set(io,614400000,{true,true,1});assert(r.status==ChangeStatus::ActiveDividerChange && io.writes.empty());}
     {IO io;io.regs[PLL]=0;auto r=set(io,614400000,{true,true,0});assert(r.status==ChangeStatus::Complete && io.writesTo(PLL)==2);}
-    // Firmware rejection must precede PLL/control writes. Timeouts are finite.
-    {IO io;io.regs[Mailbox]=0x80000000;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::MailboxBusy && io.writes.empty());}
-    {IO io;io.mailboxError=true;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::MailboxError && io.writesTo(PLL)==0);}
-    {IO io;io.mailboxTimeout=true;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::MailboxTimeout && r.delayUs==500 && io.writesTo(PLL)==0);}
-    {IO io;io.prepareDenied=true;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::PrepareTimeout && r.delayUs==53000 && io.writesTo(PLL)==0);}
-    {IO io;io.prepareDenied=true;io.completionPolls=26;auto r=set(io,614400000,ready);
-     assert((r.status==ChangeStatus::MailboxTimeout || r.status==ChangeStatus::PrepareTimeout) && r.delayUs==53000 && io.writesTo(PLL)==0);}
-    {IO io;io.concurrentChange=true;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::ReadbackMismatch && io.writesTo(PLL)==0 && io.writesTo(Control)==0);}
     // No rollback or low voltage is issued after uncertain hardware state.
     {IO io;io.pllTimeout=true;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::PllTimeout && r.delayUs==1000 && io.writesTo(Control)==0 && io.writesTo(Data)==1 && (io.regs[PLL]&(1U<<23)));}
     {IO io;io.badControl=true;auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::ReadbackMismatch && io.writesTo(Data)==1);}
-    {IO io;io.regs.erase(Data1);auto r=set(io,614400000,ready);assert(r.status==ChangeStatus::Unavailable && io.writes.empty());}
     {IO io;io.regs[PLL]=0;io.regs[Squash]=0x80000000;auto r=set(io,614400000,{true,true,0});assert(r.status==ChangeStatus::NotReady && io.writes.empty());}
     puts("PASS Display13 CDCLK transitions: native Hz, PCODE prepare/error, active crawl, quiescent divider/cold enable, bounded faults. Synthetic IO only.");
 }
