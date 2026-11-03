@@ -124,6 +124,27 @@ struct NativeBridge {
         ddiRefs[port] = 1; bootDDIProtected = true; begun = true;
         return r;
     }
+private:
+    // Callers validate their native scope and bridge state before taking a ref.
+    template<class IO> Result getReference(IO &io,Lease &lease,uint32_t &refs,uint32_t domains) {
+        Result r;
+        if(refs==UINT32_MAX) {r.status=Status::Overflow;return r;}
+        if(!refs) {
+            r=acquire(io,state,lease,domains);
+            if(r.status!=Status::Complete)return r;
+        }
+        ++refs;r.status=Status::Complete;return r;
+    }
+    template<class IO> Result putReference(IO &io,Lease &lease,uint32_t &refs,bool protectedReference) {
+        Result r;
+        if(!refs || (refs==1 && protectedReference)) {r.status=Status::Unbalanced;return r;}
+        if(refs==1) {
+            r=release(io,state,lease);
+            if(r.status!=Status::Complete)return r;
+        }
+        --refs;r.status=Status::Complete;return r;
+    }
+public:
     template<class IO> Result getPG(IO &io, unsigned pg) {
         Result r;
         if (!begun || state.faulted || state.suspended) return r;
@@ -137,51 +158,26 @@ struct NativeBridge {
         for (unsigned slot = 1; slot <= pg; ++slot) if (nativeRefs(slot) == UINT32_MAX) {
             r.status = Status::Overflow; r.domain = slot; return r;
         }
-        if (!pgRefs[pg-1]) {
-            r = acquire(io,state,pgLease[pg-1],domains);
-            if (r.status != Status::Complete) return r;
-        }
-        ++pgRefs[pg-1]; r.status = Status::Complete;
-        return r;
+        return getReference(io,pgLease[pg-1],pgRefs[pg-1],domains);
     }
     template<class IO> Result putPG(IO &io, unsigned pg) {
         Result r;
         if (!begun || state.faulted || state.suspended) return r;
         if (!pg) { r.status = Status::Complete; return r; }
         if (!nativeScope(pg)) { r.status = Status::InvalidDomains; return r; }
-        if (!pgRefs[pg-1]) { r.status = Status::Unbalanced; return r; }
-        if (pg == 1 && pgRefs[0] == 1 && bootPGProtected) { r.status = Status::Unbalanced; return r; }
-        if (pgRefs[pg-1] == 1) {
-            r = release(io,state,pgLease[pg-1]);
-            if (r.status != Status::Complete) return r;
-        }
-        --pgRefs[pg-1]; r.status = Status::Complete;
-        return r;
+        return putReference(io,pgLease[pg-1],pgRefs[pg-1],pg==1 && bootPGProtected);
     }
     template<class IO> Result getDDI(IO &io, unsigned port) {
         Result r;
         if (!begun || state.faulted || state.suspended) return r;
         if (!acceptsPort(port)) { r.status = Status::InvalidDomains; return r; }
-        if (ddiRefs[port] == UINT32_MAX) { r.status = Status::Overflow; return r; }
-        if (!ddiRefs[port]) {
-            r = acquire(io,state,ddiLease[port],ddiDomain(port));
-            if (r.status != Status::Complete) return r;
-        }
-        ++ddiRefs[port]; r.status = Status::Complete;
-        return r;
+        return getReference(io,ddiLease[port],ddiRefs[port],ddiDomain(port));
     }
     template<class IO> Result putDDI(IO &io, unsigned port) {
         Result r;
         if (!begun || state.faulted || state.suspended) return r;
         if (!acceptsPort(port)) { r.status = Status::InvalidDomains; return r; }
-        if (!ddiRefs[port]) { r.status = Status::Unbalanced; return r; }
-        if (port == bootPort && ddiRefs[port] == 1 && bootDDIProtected) { r.status = Status::Unbalanced; return r; }
-        if (ddiRefs[port] == 1) {
-            r = release(io,state,ddiLease[port]);
-            if (r.status != Status::Complete) return r;
-        }
-        --ddiRefs[port]; r.status = Status::Complete;
-        return r;
+        return putReference(io,ddiLease[port],ddiRefs[port],port==bootPort && bootDDIProtected);
     }
     // Native port discovery brackets AUX operations even for the selected
     // HDMI combo port. Hold its real Display13 AUX well and PW1 dependency;
@@ -190,25 +186,13 @@ struct NativeBridge {
         Result r;
         if (!begun || state.faulted || state.suspended) return r;
         if (!acceptsPort(port)) { r.status = Status::InvalidDomains; return r; }
-        if (auxRefs[port] == UINT32_MAX) { r.status = Status::Overflow; return r; }
-        if (!auxRefs[port]) {
-            r = acquire(io,state,auxLease[port],auxDomain(port));
-            if (r.status != Status::Complete) return r;
-        }
-        ++auxRefs[port]; r.status = Status::Complete;
-        return r;
+        return getReference(io,auxLease[port],auxRefs[port],auxDomain(port));
     }
     template<class IO> Result putAUX(IO &io, unsigned port) {
         Result r;
         if (!begun || state.faulted || state.suspended) return r;
         if (!acceptsPort(port)) { r.status = Status::InvalidDomains; return r; }
-        if (!auxRefs[port] || (auxRefs[port]==1 && auxCommands[port])) { r.status = Status::Unbalanced; return r; }
-        if (auxRefs[port] == 1) {
-            r = release(io,state,auxLease[port]);
-            if (r.status != Status::Complete) return r;
-        }
-        --auxRefs[port]; r.status = Status::Complete;
-        return r;
+        return putReference(io,auxLease[port],auxRefs[port],auxCommands[port]!=0);
     }
     // Native boot allocation skips getPG, while free always puts PG. Transfer
     // the initial references to that exact boot path instead of requiring a
