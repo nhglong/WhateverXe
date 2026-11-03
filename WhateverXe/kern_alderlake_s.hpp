@@ -8,6 +8,7 @@
 #include "kern_xelp_panel_power.hpp"
 #include "kern_xelp_display_resources.hpp"
 #include "kern_xelp_gt_resources.hpp"
+#include "kern_xelp_combo_clock.hpp"
 
 namespace AlderLakeS {
 constexpr uint32_t PortMask=XELP::ADLSComboResources::physicalMask(); // A, TC1, TC2, TC3, TC4
@@ -158,15 +159,8 @@ struct Wiring {
         out.valid=true;return out;
     }
 };
-struct PLL {
-    uint32_t enable {},cfg0 {},cfg1 {};
-    static bool resolve(uint32_t id,PLL &out) {
-        out={};if(id>3)return false;
-        const uint32_t enables[]={0x46010,0x46014,0x46018,0x46030};
-        const uint32_t configs[]={0x164284,0x16428C,0x164294,0x1642C0};
-        out={enables[id],configs[id],configs[id]+4};return true;
-    }
-};
+// ADL-S uses the common physical Combo PLL register inventory.
+using PLL = XELPComboClock::PLL;
 // Keep physical DDI/AUX registers; populate only the separate Combo bank.
 // PHY A has a native table: validate it and correct its duplicated lane2 slot.
 inline bool comboRegisters(uint32_t ddi,uint32_t *registers,size_t count) {
