@@ -80,7 +80,7 @@ BIOS/UEFIで設定できる場合は、**DVMT Pre-Allocatedを96MB**にします
 
 ### その他の設定
 
-- 内蔵画面の輝度調整には`SSDT-PNLF`を追加します。
+- 内蔵画面の輝度調整には`SSDT-PNLF`を追加します。Tiger LakeのeDPでは輝度0%でも最小の非ゼロバックライト値を要求します。ディスプレイスリープ時は消灯します。
 - GPUは自動選択するため、通常は`device-id`上書きは不要です。
 - Alder Lake-N / Twin LakeとAlder Lake-H/P/U / Raptor Lake-H/Pではタイル形式を自動選択します。`-yTileDisable`は使わないでください。`AAPL,GfxYTile`は不要です。
 

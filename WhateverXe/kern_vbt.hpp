@@ -35,7 +35,8 @@ struct Ports {
         uint16_t delays[5] {};
         // BDB 43 is optional and independent of the signal-policy facts.
         bool backlightValid {},pwmPresent {},activeLowPWM {};
-        uint32_t backlightType {},controller {},pwmHz {};
+        uint32_t backlightType {},controller {},pwmHz {},minimumBrightness {};
+        bool minimumBrightnessValid {};
     } panel;
     Port port[PortCount];
     bool valid() const {return status==Status::Valid;}
@@ -129,6 +130,16 @@ inline void panelFacts(const uint8_t *b,size_t header,size_t size,Ports &ports) 
         p.backlightType=backlight[113+p.type]&15;
         p.controller=backlight[113+p.type]>>4;
         p.backlightValid=true;
+        // Linux intel_bios.c: BDB 43 changed the minimum format at v234.
+        if(ports.version<234) {
+            p.minimumBrightness=entry[3];p.minimumBrightnessValid=true;
+        } else if(backlightSize>=257 && (ports.version<236 || backlightSize>=273)) {
+            auto minimum=u16(backlight+193+4*p.type);
+            const bool wide=ports.version>=236 ? backlight[257+p.type]==16 :
+                u16(backlight+129+4*p.type)>255;
+            if(wide)minimum=uint16_t(minimum/255);
+            p.minimumBrightness=minimum;p.minimumBrightnessValid=true;
+        }
     }
 }
 // Return the donor's physical-DDI slot, never an FB index. Display13 VBT

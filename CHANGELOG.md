@@ -11,6 +11,7 @@ Use the latest [WhateverXe Graphics](https://github.com/b00t0x/WhateverXe-Graphi
 
 ### Fixed
 
+- Map Tiger Lake eDP brightness from the panel firmware minimum through full brightness while preserving native panel power sequencing.
 - Fix graphics initialization and acceleration on additional supported Tiger Lake and Alder/Raptor Lake GPU variants, including single-channel configurations.
 - Fix graphics initialization on compatible Sequoia and Tahoe updates without requiring an exact OS build match.
 - Fix display freezes during cursor resizing and improve multi-display startup and display off/on with MIPI DSI panels.

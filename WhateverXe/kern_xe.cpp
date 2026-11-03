@@ -80,6 +80,7 @@
 #include "kern_tgl_hang_select.hpp"
 #include "kern_tgl_recovery.hpp"
 #include "kern_tgl_aux_call.hpp"
+#include "kern_tgl_backlight.hpp"
 
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_cpu.hpp>
@@ -13366,6 +13367,23 @@ void XE::processNativePanel(KernelPatcher &patcher,size_t index,mach_vm_address_
     // PANEL_TIMING_INSTALL_END
    }
 
+   // TGL_BACKLIGHT_MINIMUM_INSTALL: brightness only; never route LightUpEDP
+   // or overwrite the native PWM enable/period/polarity sequence.
+   if(tglActive && !adlsDisplaySelected && !display13FramebufferRequested &&
+      XELP::displayAdapter(xeProfile.family)==XELP::DisplayAdapter::TGL) {
+    const char *symbol="__ZN31AppleIntelFramebufferController14hwSetBacklightEj";
+    const uint8_t entry[]={0x55,0x48,0x89,0xe5,0x41,0x56,0x53,0x48,0xff,0x05,0x90,0x44,0x09,0x00};
+    const auto target=patcher.solveSymbol(index,symbol,address,size);
+    const bool known=size>=0x4a56a+sizeof(entry) && target==address+0x4a56a &&
+     !memcmp(reinterpret_cast<void *>(target),entry,sizeof(entry));
+    KernelPatcher::RouteRequest route(symbol,wrapTGLPanelBacklight,orgTGLPanelBacklight);
+    // Copy only push/mov/push; the RIP-relative counter follows this prologue.
+    const bool ready=known && patcher.routeMultipleShort(index,&route,1,address,size);
+    IORegistryEntry::getRegistryRoot()->setProperty("TGLBacklightMinimumReady",ready);
+    patcher.clearError();
+   }
+   // TGL_BACKLIGHT_MINIMUM_INSTALL_END
+
    if(adlsDisplaySelected || (display13FramebufferRequested && adlnOutputWiring.panel)) {
     // ADLS_PANEL_PWM_INSTALL: preflight the native lifecycle and PWM enable site.
     const char *light="__ZN31AppleIntelFramebufferController10LightUpEDPEP21AppleIntelFramebufferP21AppleIntelDisplayPathPK29IODetailedTimingInformationV2";
@@ -13515,6 +13533,22 @@ uint32_t XE::wrapTGLPanelTiming(void *controller) {
  const auto result=FunctionCast(wrapTGLPanelTiming,callbackXE->orgTGLPanelTiming)(controller);
  if(!result)tglApplyPanelTiming(controller,true);
  return result;
+}
+
+// Adjust only the request. The native method always executes, including
+// before the controller/period is ready and on every invalid/foreign request.
+uint32_t XE::wrapTGLPanelBacklight(void *controller,uint32_t brightness) {
+ auto s=callbackXE;
+ if(s->tglActive && !s->adlsDisplaySelected && !s->display13FramebufferRequested &&
+    XELP::displayAdapter(s->xeProfile.family)==XELP::DisplayAdapter::TGL &&
+    controller && controller==s->tglObservationController) {
+  uint32_t period;memcpy(&period,static_cast<const uint8_t *>(controller)+0xE60,sizeof(period));
+  const auto &panel=s->firmwarePorts.panel;
+  const auto minimum=panel.backlightValid && panel.pwmPresent && panel.minimumBrightnessValid ?
+   panel.minimumBrightness : 0;
+  brightness=TGLBacklight::minimumRequest(brightness,period,minimum);
+ }
+ return FunctionCast(wrapTGLPanelBacklight,s->orgTGLPanelBacklight)(controller,brightness);
 }
 
 // ADL-S native PWM panel adapter. The panel lifecycle remains synchronous

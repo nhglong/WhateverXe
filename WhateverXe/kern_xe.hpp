@@ -109,6 +109,8 @@ private:
     bool adlsPLLTableReady {},adlsClockReady {},adlsPowerReady {},adlsPanelPWMReady {};
  XELP::PanelPWM adlsPanelPWM;
  mach_vm_address_t orgADLSLightUpEDP {},orgADLSPanelBacklight {};
+ mach_vm_address_t orgTGLPanelBacklight {};
+ static uint32_t wrapTGLPanelBacklight(void *controller,uint32_t brightness);
  static bool adlsPanelPWMTarget(void *controller,void *&access,void *&power);
  static bool adlsCapturePanelPWM(void *controller);
  static uint32_t wrapADLSLightUpEDP(void *controller,void *fb,void *path,const void *timing);

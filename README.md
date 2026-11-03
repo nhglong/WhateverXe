@@ -80,7 +80,7 @@ These settings are unnecessary at 96MB and do not increase firmware-allocated me
 
 ### Other settings
 
-- Add `SSDT-PNLF` for internal-display brightness control.
+- Add `SSDT-PNLF` for internal-display brightness control. Tiger Lake eDP requests a minimum nonzero backlight level at 0% brightness; display sleep still turns the panel off.
 - GPU selection is automatic; a `device-id` override is normally unnecessary.
 - Alder Lake-N / Twin Lake and Alder Lake-H/P/U / Raptor Lake-H/P select tiling automatically. Do not use `-yTileDisable`; `AAPL,GfxYTile` is unnecessary.
 

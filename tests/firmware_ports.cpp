@@ -174,6 +174,18 @@ int main(int argc,char **argv){
   assert(q.panel.controller==n && q.panel.backlightType==2 && q.panel.pwmHz==200+n);
   for(unsigned i=0;i<5;++i)assert(q.panel.delays[i]==100*n+i+1);
  }
+ // Legacy and modern BDB minimum brightness, including 16-bit precision.
+ for(unsigned version:{233U,234U,235U,236U,250U})for(bool wide:{false,true}) {
+  auto b=panelTable;b.resize(bl+273);w16(b,bl-2,273);
+  w16(b,24,b.size());w16(b,68,b.size()-48);w16(b,64,version);
+  const auto n=b[options];b[bl+1+6*n+3]=7;
+  w16(b,bl+129+4*n,wide?65535:255);
+  w16(b,bl+193+4*n,wide?1785:7);b[bl+257+n]=wide?16:8;
+  auto q=parse(b.data(),b.size(),Family::TigerLake);
+  assert(q.panel.minimumBrightnessValid && q.panel.minimumBrightness==7);
+ }
+ {auto q=parse(panelTable.data(),panelTable.size(),Family::TigerLake);
+  assert(q.panel.backlightValid && !q.panel.minimumBrightnessValid);}
  for(unsigned bad=0;bad<3;++bad) {
   auto b=panelTable;
   if(bad==0)b[bl]=7;
